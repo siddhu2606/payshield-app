@@ -16,7 +16,7 @@
   "dependencies": {
     "@capacitor-community/text-to-speech": "^4.1.1",
     "@capacitor/android": "^6.1.2",
-    "@capacitor/app": "^6.0.1",
+    "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^6.1.2",
     "@fontsource/bricolage-grotesque": "^5.0.17",
     "@fontsource/ibm-plex-mono": "^5.0.14",
