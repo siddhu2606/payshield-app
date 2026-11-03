@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Smartphone, Monitor, MonitorSmartphone, Download, ArrowRight, MessageCircleQuestion, Scale, Gauge as GaugeIc, UserCheck, Github } from 'lucide-react';
-import { Logo, Mark } from '../ui.jsx';
+import { Logo, Mark, SyncBadge } from '../ui.jsx';
 import { APK_URL, REPO_URL } from '../config.js';
 
 const STEPS = [
@@ -18,6 +18,7 @@ export default function Landing() {
       <header className="lp-top">
         <Logo size={30} />
         <nav className="row wrap" style={{ gap: 8 }}>
+          <SyncBadge />
           <Link className="btn ghost sm" to="/demo">Live demo</Link>
           <a className="btn ghost sm" href={REPO_URL} target="_blank" rel="noreferrer"><Github size={15} />Code</a>
         </nav>

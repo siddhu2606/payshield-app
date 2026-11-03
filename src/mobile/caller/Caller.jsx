@@ -4,7 +4,7 @@ import { useDb, startCall, endCall, sayLine, pushPaymentRequest, callOutcome, fi
 import { SCRIPTS, scriptById } from '../../core/calls.js';
 import { TIER } from '../../core/risk.js';
 import { Top } from '../MobileApp.jsx';
-import { inr, initials, ago, TierPill } from '../../ui.jsx';
+import { inr, initials, ago, TierPill, SyncBadge } from '../../ui.jsx';
 
 const TARGETS = [['u_aarav', 'member'], ['c_anaya', 'child']];
 
@@ -172,6 +172,7 @@ export function CallerLog() {
           </div>
         )}
         <small className="help">Use these with the admin Role-play page to compare groups.</small>
+        <div style={{ display: 'flex', justifyContent: 'center' }}><SyncBadge /></div>
       </div>
     </>
   );

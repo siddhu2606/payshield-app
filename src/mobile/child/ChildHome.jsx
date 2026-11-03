@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Send, HandCoins, LogOut } from 'lucide-react';
 import { useDb, historyOf, childSpentToday } from '../../core/store.js';
 import { Top, Bellbtn } from '../MobileApp.jsx';
-import { inr, initials, ago, StatusPill } from '../../ui.jsx';
+import { inr, initials, ago, StatusPill, SyncBadge } from '../../ui.jsx';
 
 export default function ChildHome({ user, signOut }) {
   const db = useDb();
@@ -43,6 +43,7 @@ export default function ChildHome({ user, signOut }) {
             {hist.slice(0, 5).map((t) => <div className="li" key={t.id}><span className="avatar">{initials(t.payeeName)}</span><div className="t"><b>{t.payeeName}</b><small>{t.note} · {ago(t.createdAt)}</small></div><span className="amt">−{inr(t.amount)}</span></div>)}
           </div>
         </div>
+        <div style={{ display: 'flex', justifyContent: 'center' }}><SyncBadge /></div>
         <button className="btn ghost block" onClick={signOut}><LogOut size={16} />Sign out</button>
       </div>
     </>

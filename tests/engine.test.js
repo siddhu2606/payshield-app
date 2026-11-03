@@ -3,6 +3,20 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scoreSignals, storyVsFacts, tierOf, findScriptWords, DEFAULT_POLICY } from '../src/core/risk.js';
 import { runSuite } from '../src/core/scenarios.js';
+import { shouldAdopt } from '../src/core/sync.js';
+
+test('sync: an untouched device always takes the room state', () => {
+  assert.equal(shouldAdopt({ rev: 0 }, { rev: 0, revBy: 'a' }), true);
+  assert.equal(shouldAdopt({}, { rev: 7, revBy: 'a' }), true);
+});
+
+test('sync: newer revision wins, older is ignored, ties break the same way on every device', () => {
+  assert.equal(shouldAdopt({ rev: 5, revBy: 'a' }, { rev: 6, revBy: 'a' }), true);
+  assert.equal(shouldAdopt({ rev: 6, revBy: 'a' }, { rev: 5, revBy: 'z' }), false);
+  const x = { rev: 9, revBy: 'abc' }, y = { rev: 9, revBy: 'xyz' };
+  assert.notEqual(shouldAdopt(x, y), shouldAdopt(y, x));
+  assert.equal(shouldAdopt({ rev: 3 }, null), false);
+});
 
 test('routine payment to a known payee is Low with no reasons', () => {
   const r = scoreSignals({});

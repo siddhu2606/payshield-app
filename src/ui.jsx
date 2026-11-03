@@ -1,5 +1,6 @@
-import { useEffect, useState, createContext, useContext, useCallback } from 'react';
+import { useEffect, useState, createContext, useContext, useCallback, useSyncExternalStore } from 'react';
 import { TIER } from './core/risk.js';
+import { syncStatus, setRoom } from './core/sync.js';
 
 /* ---------- formatting ---------- */
 export const inr = (n) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
@@ -147,6 +148,32 @@ export function Sheet({ onClose, children, label }) {
         {children}
       </div>
     </div>
+  );
+}
+
+/* ---------- live sync badge ---------- */
+export function SyncBadge({ compact }) {
+  const s = useSyncExternalStore(syncStatus.subscribe, syncStatus.get);
+  const [open, setOpen] = useState(false);
+  const [room, setRoomDraft] = useState(s.room);
+  const label = { live: 'Live sync', connecting: 'Connecting…', offline: 'Offline · saved on this device', off: 'This device only', framed: 'Live sync' }[s.state] || s.state;
+  const color = s.state === 'live' || s.state === 'framed' ? 'var(--t-low)' : s.state === 'connecting' ? 'var(--t-med)' : 'var(--dim)';
+  return (
+    <>
+      <button className="sync-badge" onClick={() => s.state !== 'framed' && setOpen(true)} title="Devices in the same room share one demo">
+        <i style={{ background: color, boxShadow: `0 0 0 3px color-mix(in srgb, ${color} 25%, transparent)` }} />
+        <span>{label}{!compact && <> · room <b className="mono">{s.room}</b></>}</span>
+      </button>
+      {open && (
+        <Sheet onClose={() => setOpen(false)} label="Sync room">
+          <b className="h3">Live sync room</b>
+          <p className="muted" style={{ margin: 0 }}>Every phone and laptop in the same room shares one demo: payments, calls, alerts and locks show up everywhere within a second. Use your own room name if other people are demoing at the same time.</p>
+          <div className="field"><label htmlFor="room">Room name</label><input id="room" className="input mono" value={room} onChange={(e) => setRoomDraft(e.target.value)} autoCapitalize="none" /></div>
+          <button className="btn block" onClick={() => setRoom(room)}>Join room</button>
+          <small className="dim">Status: {label}{s.broker ? ` via ${s.broker}` : ''}. Demo data travels through a public relay, so it is all fictional. Never type real details.</small>
+        </Sheet>
+      )}
+    </>
   );
 }
 

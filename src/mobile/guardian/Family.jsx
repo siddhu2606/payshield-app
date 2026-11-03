@@ -1,7 +1,7 @@
 import { LogOut, RotateCcw, Lock } from 'lucide-react';
 import { useDb, updateChild, childSpentToday, resetDemo, unlockPhone } from '../../core/store.js';
 import { Top } from '../MobileApp.jsx';
-import { inr, initials, useToast } from '../../ui.jsx';
+import { inr, initials, useToast, SyncBadge } from '../../ui.jsx';
 
 export default function Family({ user, signOut }) {
   const db = useDb();
@@ -38,6 +38,7 @@ export default function Family({ user, signOut }) {
             </div>
           );
         })}
+        <div style={{ display: 'flex', justifyContent: 'center' }}><SyncBadge /></div>
         <button className="btn ghost block" onClick={() => { resetDemo(); toast('Demo data reset'); }}><RotateCcw size={16} />Reset demo data</button>
         <button className="btn ghost block" onClick={signOut}><LogOut size={16} />Sign out</button>
       </div>

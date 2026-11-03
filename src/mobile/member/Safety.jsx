@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ShieldCheck, UserCheck, PhoneCall, LogOut, RotateCcw, Hand, Info } from 'lucide-react';
 import { useDb, updateSettings, setTrustedContact, resetDemo } from '../../core/store.js';
 import { Top } from '../MobileApp.jsx';
-import { initials, Sheet, useToast } from '../../ui.jsx';
+import { initials, Sheet, useToast, SyncBadge } from '../../ui.jsx';
 
 export default function Safety({ user, signOut }) {
   const db = useDb();
@@ -48,6 +48,7 @@ export default function Safety({ user, signOut }) {
           <span className="row" style={{ alignItems: 'flex-start' }}><PhoneCall size={17} color="var(--t-high)" style={{ flex: 'none', marginTop: 2 }} /><small className="muted">Being threatened? Hang up and call the national cyber-crime helpline <b className="mono" style={{ color: 'var(--fg)' }}>1930</b>.</small></span>
         </div>
 
+        <div style={{ display: 'flex', justifyContent: 'center' }}><SyncBadge /></div>
         <button className="btn ghost block" onClick={() => setConfirmReset(true)}><RotateCcw size={16} />Reset demo data</button>
         <button className="btn ghost block" onClick={signOut}><LogOut size={16} />Sign out</button>
         <p className="help" style={{ textAlign: 'center', margin: 0 }}><Info size={12} /> Prototype for FIN-11 · Team V/Slash · synthetic data</p>

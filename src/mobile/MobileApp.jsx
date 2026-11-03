@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, NavLink, useSearchParams, useNavigate } from '
 import { Home, Send, Clock, ShieldCheck, Bell, Users, HandCoins, Wallet, UserRound, ArrowLeft, Baby, Check, Camera, IdCard, ChevronRight, Delete, PhoneCall, ListChecks } from 'lucide-react';
 import { useDb, registerMember, markNotificationsRead } from '../core/store.js';
 import { PERSONAS } from '../core/data.js';
-import { Logo, Sheet, ago, initials } from '../ui.jsx';
+import { Logo, Sheet, ago, initials, SyncBadge } from '../ui.jsx';
 import MemberHome from './member/MemberHome.jsx';
 import PayFlow from './member/PayFlow.jsx';
 import Activity from './member/Activity.jsx';
@@ -196,6 +196,7 @@ function SignIn({ onSignIn }) {
           </button>
         ))}
         <button className="btn ghost block" onClick={() => setOnboard(true)}>New member? Create an account</button>
+        <div style={{ display: 'flex', justifyContent: 'center' }}><SyncBadge /></div>
         <p className="help" style={{ textAlign: 'center', margin: 0 }}>Simulated app. Fictional people and money. Never enter a real PIN, OTP or ID number.</p>
       </div>
     </div>

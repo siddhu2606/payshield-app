@@ -1,13 +1,14 @@
 // Shared state for every PayShield screen.
-// Stored in localStorage and broadcast between tabs and frames, so the member phone, the guardian phone and
-// the admin console update each other live when they run in the same browser. It is the stand-in for the
+// Stored in localStorage, broadcast between tabs and frames in the same browser, and synced across devices
+// (phone APK, phone browser, laptop) through a relay room — see sync.js. It is the stand-in for the
 // FastAPI + PostgreSQL backend in the plan: the functions below mirror its API contract.
 import { useSyncExternalStore } from 'react';
 import { createSeed, factsFor } from './data.js';
 import { contextSignals, scoreSignals, needsSafetyCheck } from './risk.js';
 import { scriptById, fillName } from './calls.js';
+import { initSync, publish, getRoom, clientId, seenRev } from './sync.js';
 
-const KEY = 'payshield.db.v4';
+const KEY = `payshield.db.v4.${getRoom()}`;
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('payshield') : null;
 const listeners = new Set();
 let db = load();
@@ -32,19 +33,41 @@ function persist(next) {
 function emit() { listeners.forEach((l) => l()); }
 
 function commit(mutator) {
+  const prevRev = db.rev || 0;
   const next = structuredClone(db);
   const out = mutator(next);
+  // Logical revision for cross-device "newest wins"; keep the synced payload small.
+  next.rev = Math.max(prevRev, seenRev()) + 1;
+  next.revBy = clientId();
+  if (next.audit?.length > 150) next.audit.length = 150;
+  if (next.notifications?.length > 80) next.notifications.length = 80;
+  if (next.calls?.length > 40) next.calls.length = 40;
   db = next;
   persist(db);
   channel?.postMessage({ type: 'sync' });
   emit();
+  publish(db);
   return out;
 }
+
+// State that arrived from another device.
+function adoptRemote(remote) {
+  db = remote;
+  persist(db);
+  channel?.postMessage({ type: 'sync' });
+  emit();
+}
+initSync({ getDb: () => db, adopt: adoptRemote });
 
 function reloadFromStorage() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) { db = JSON.parse(raw); emit(); }
+    if (raw) {
+      db = JSON.parse(raw);
+      emit();
+      // A frame (demo wall) changed state: the top-level window carries it to other devices.
+      if (typeof window !== 'undefined' && window.top === window) publish(db);
+    }
   } catch { /* ignore */ }
 }
 channel?.addEventListener('message', reloadFromStorage);

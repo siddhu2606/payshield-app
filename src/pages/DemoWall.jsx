@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { RotateCcw, ArrowLeft, Maximize2 } from 'lucide-react';
 import { resetDemo } from '../core/store.js';
-import { Logo, useToast } from '../ui.jsx';
+import { Logo, useToast, SyncBadge } from '../ui.jsx';
 
 const PHONES = [
   ['member', 'Member · Aarav', 'Pay the “Coercion ₹50,000” demo case'],
@@ -28,7 +28,7 @@ export default function DemoWall() {
           <Logo size={26} sub="Live demo wall" />
         </div>
         <div className="row wrap" style={{ gap: 8 }}>
-          <span className="help">All screens share one simulated backend in this browser and update each other live.</span>
+          <SyncBadge />
           <button className="btn soft sm" onClick={() => setShowAdmin(!showAdmin)}>{showAdmin ? 'Hide' : 'Show'} admin</button>
           <button className="btn ghost sm" onClick={() => { resetDemo(); setKey((k) => k + 1); toast('Demo reset to the starting story'); }}><RotateCcw size={15} />Reset demo</button>
         </div>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Routes, Route, Navigate, NavLink, Link } from 'react-router-dom';
 import { LayoutDashboard, ListChecks, Hourglass, IdCard, Database, SlidersHorizontal, FlaskConical, Users, ScrollText, LogOut, Smartphone, KeyRound } from 'lucide-react';
 import { useDb } from '../core/store.js';
-import { Logo, initials } from '../ui.jsx';
+import { Logo, initials, SyncBadge } from '../ui.jsx';
 import Overview from './Overview.jsx';
 import Transactions from './Transactions.jsx';
 import Kyc from './Kyc.jsx';
@@ -54,6 +54,7 @@ export default function AdminApp() {
         ))}
         <div className="me">
           <div className="row"><span className="avatar" style={{ width: 32, height: 32, fontSize: 12 }}>{initials(me.name)}</span><div className="grow"><b style={{ fontSize: 13 }}>{me.name}</b><br /><small className="muted mono">{me.staffId}</small></div></div>
+          <SyncBadge compact />
           <Link to="/app" className="row muted" style={{ textDecoration: 'none', fontSize: 13 }}><Smartphone size={15} />Open mobile app</Link>
           <button className="link row" style={{ color: 'var(--mute)', textDecoration: 'none', fontSize: 13 }} onClick={signOut}><LogOut size={15} />Sign out</button>
         </div>
