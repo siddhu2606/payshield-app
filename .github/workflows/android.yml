@@ -55,7 +55,7 @@ jobs:
           ./gradlew assembleRelease --no-daemon
       - name: Name the APK
         run: cp android/app/build/outputs/apk/release/app-release.apk PayShield.apk
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: PayShield-apk
           path: PayShield.apk
