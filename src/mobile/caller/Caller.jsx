@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Phone, PhoneOff, Moon, Send, MessageSquareQuote, LogOut, AlertTriangle, ShieldCheck, Check, Hourglass, CircleSlash, Radio } from 'lucide-react';
+import { Phone, PhoneOff, Moon, Send, MessageSquareQuote, LogOut, AlertTriangle, ShieldCheck, Check, Hourglass, CircleSlash, Radio, Lock } from 'lucide-react';
 import { useDb, startCall, endCall, sayLine, pushPaymentRequest, callOutcome, fillName } from '../../core/store.js';
 import { SCRIPTS, scriptById } from '../../core/calls.js';
 import { TIER } from '../../core/risk.js';
@@ -21,7 +21,9 @@ const OUTCOME = {
   held: { label: 'PayShield paused the payment', cls: 'c-high', Icon: ShieldCheck },
   stopped: { label: 'Payment stopped: scam failed', cls: 'c-low', Icon: CircleSlash },
   paid: { label: 'Money sent: scam succeeded', cls: 'c-crit', Icon: AlertTriangle },
-  declined: { label: 'Victim declined the call', cls: 'c-low', Icon: PhoneOff }
+  declined: { label: 'Victim declined the call', cls: 'c-low', Icon: PhoneOff },
+  locked: { label: 'Call cut: PayShield locked their phone', cls: 'c-low', Icon: Lock },
+  blocked: { label: 'Didn’t connect: their phone is locked', cls: 'c-low', Icon: Lock }
 };
 
 export function CallerConsole({ user, signOut }) {
@@ -130,7 +132,7 @@ function CallSummary({ call, db }) {
     <div className="card" style={{ borderColor: out.state === 'paid' ? 'var(--t-crit)' : 'color-mix(in srgb, var(--t-low) 50%, var(--line))' }}>
       <span className="eyebrow">Last call · {sc.label}</span>
       <span className={`row ${O.cls}`} style={{ fontWeight: 700, fontSize: 16 }}><O.Icon size={19} />{O.label}</span>
-      <small className="muted">{out.paid ? `${inr(out.paid)} sent (simulated)` : `₹0 lost. PayShield ${out.state === 'declined' ? 'wasn’t needed' : 'held the line'}.`}</small>
+      <small className="muted">{out.paid ? `${inr(out.paid)} sent (simulated)` : out.state === 'locked' ? '₹0 lost. The guardian stopped the payment, the call was cut and the phone locked.' : out.state === 'blocked' ? '₹0 lost. A locked phone doesn’t take calls.' : `₹0 lost. PayShield ${out.state === 'declined' ? 'wasn’t needed' : 'held the line'}.`}</small>
     </div>
   );
 }
@@ -162,7 +164,7 @@ export function CallerLog() {
                   <div className="li" key={c.id}>
                     <span className="avatar">{initials(db.users[c.toUserId]?.name)}</span>
                     <div className="t"><b>{scriptById(c.scriptId).label}</b><small>{db.users[c.toUserId]?.name.split(' ')[0]} · {ago(c.createdAt)}{c.lateNight ? ' · late night' : ''}</small></div>
-                    <span className={`pill fill ${O.cls}`}>{o.state === 'paid' ? `Lost ${inr(o.paid)}` : o.state === 'held' ? 'Held' : o.state === 'none' ? 'No payment' : o.state === 'declined' ? 'Declined' : 'Stopped'}</span>
+                    <span className={`pill fill ${O.cls}`}>{o.state === 'paid' ? `Lost ${inr(o.paid)}` : o.state === 'held' ? 'Held' : o.state === 'none' ? 'No payment' : o.state === 'declined' ? 'Declined' : o.state === 'locked' ? 'Cut · locked' : o.state === 'blocked' ? 'Blocked' : 'Stopped'}</span>
                   </div>
                 );
               })}

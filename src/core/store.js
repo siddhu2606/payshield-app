@@ -207,10 +207,39 @@ export function resolveRequest(reqId, approve, actorId) {
           tx.timeline.push({ t: Date.now(), label: approve ? `Checked by ${actor}; nothing to send` : `Declined by trusted contact (${actor})` });
         }
         notify(d, tx.userId, { title: approve ? `${actor.split(' ')[0]} approved your payment` : `${actor.split(' ')[0]} stopped the payment`, body: `₹${tx.amount.toLocaleString('en-IN')} to ${tx.payeeName}` });
+        if (!approve) lockPhone(d, tx.userId, actorId, `${actor.split(' ')[0]} stopped a ${tx.amount > 0 ? `₹${tx.amount.toLocaleString('en-IN')} ` : ''}payment`);
       }
     }
     log(d, actor, approve ? 'Request approved' : 'Request declined', req.id);
     return req;
+  });
+}
+
+/* ---------- phone lock ---------- */
+export const LOCK_COOLOFF_MS = 60e3;
+
+// Called inside a commit. Cuts any live call and locks the phone so nothing can be read or paid from it.
+function lockPhone(d, userId, byId, reason) {
+  const u = d.users[userId];
+  if (!u) return;
+  const t = Date.now();
+  (d.calls || []).forEach((c) => {
+    if (c.toUserId === userId && ['ringing', 'active'].includes(c.status)) { c.status = 'ended'; c.endedAt = t; c.endedBy = 'payshield'; }
+  });
+  u.lock = { at: t, by: byId, reason, until: t + LOCK_COOLOFF_MS };
+  d.transactions.filter((x) => x.userId === userId && x.status === 'AWAITING_DECISION').forEach((x) => { x.status = 'CANCELLED'; x.timeline?.push({ t, label: 'Cancelled when the phone was locked' }); });
+  notify(d, byId, { title: `${u.name.split(' ')[0]}’s phone is locked`, body: 'Any call was cut. You can unlock it from Family.', link: 'family' });
+  log(d, 'PayShield', 'Phone locked', `${u.name} · ${reason} · call ended`);
+}
+
+export function unlockPhone(userId, byId, method) {
+  commit((d) => {
+    const u = d.users[userId];
+    if (!u?.lock) return;
+    const by = nameOf(d, byId);
+    delete u.lock;
+    notify(d, userId, { title: method === 'guardian' ? `${by.split(' ')[0]} unlocked your phone` : 'Phone unlocked', body: 'If someone calls again asking for money, hang up and call 1930.' });
+    log(d, by, 'Phone unlocked', `${u.name} · ${method === 'guardian' ? 'by guardian' : 'passcode after cool-off'}`);
   });
 }
 
@@ -273,6 +302,7 @@ export function resolveChildPayment(reqId, approve, actorId) {
       d.transactions.push({ id: uid('T'), userId: child.id, payeeUpi: r.payeeUpi, payeeName: r.payeeName, amount: r.amount, note: r.reason, createdAt: Date.now(), status: 'COMPLETED', kind: 'child', timeline: [{ t: Date.now(), label: `Approved by ${nameOf(d, actorId)}` }] });
     }
     notify(d, child.id, { title: approve ? 'Your payment was approved' : 'Your payment was not approved', body: `₹${r.amount.toLocaleString('en-IN')} to ${r.payeeName}` });
+    if (!approve) lockPhone(d, child.id, actorId, `${nameOf(d, actorId).split(' ')[0]} stopped a ₹${r.amount.toLocaleString('en-IN')} payment`);
     log(d, nameOf(d, actorId), approve ? 'Child payment approved' : 'Child payment declined', r.id);
     return r;
   });
@@ -363,7 +393,8 @@ export function startCall({ toUserId, scriptId, lateNight }) {
     d.calls = d.calls || [];
     d.calls.forEach((c) => { if (c.toUserId === toUserId && ['ringing', 'active'].includes(c.status)) { c.status = 'ended'; c.endedAt = Date.now(); } });
     const sc = scriptById(scriptId);
-    const c = { id: uid('C'), toUserId, scriptId, lateNight: !!lateNight, status: 'ringing', createdAt: Date.now(), callerId: sc.callerId, transcript: [], messages: [], lineIdx: 0 };
+    const locked = !!d.users[toUserId]?.lock;
+    const c = { id: uid('C'), toUserId, scriptId, lateNight: !!lateNight, status: locked ? 'ended' : 'ringing', endedBy: locked ? 'payshield' : undefined, endedAt: locked ? Date.now() : undefined, blocked: locked, createdAt: Date.now(), callerId: sc.callerId, transcript: [], messages: [], lineIdx: 0 };
     d.calls.unshift(c);
     log(d, 'Caller (simulation)', 'Simulated scam call started', `${c.id} · ${sc.label} → ${nameOf(d, toUserId)}${lateNight ? ' · late night' : ''}`);
     return c;
@@ -408,7 +439,7 @@ export function callOutcome(d, c) {
   const held = txs.some((t) => ['AWAITING_DECISION', 'AWAITING_CONTACT', 'PENDING_REVIEW'].includes(t.status)) || reqs.some((r) => r.status === 'pending');
   const stopped = txs.some((t) => ['CANCELLED', 'POSTPONED'].includes(t.status)) || reqs.some((r) => r.status === 'denied');
   const last = [...txs].sort((a, b) => b.createdAt - a.createdAt)[0];
-  const state = paid ? 'paid' : held ? 'held' : stopped ? 'stopped' : c.status === 'declined' ? 'declined' : 'none';
+  const state = paid ? 'paid' : c.blocked ? 'blocked' : c.endedBy === 'payshield' ? 'locked' : held ? 'held' : stopped ? 'stopped' : c.status === 'declined' ? 'declined' : 'none';
   return { txs, reqs, paid, state, last };
 }
 

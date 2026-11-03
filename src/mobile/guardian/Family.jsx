@@ -1,5 +1,5 @@
-import { LogOut, RotateCcw } from 'lucide-react';
-import { useDb, updateChild, childSpentToday, resetDemo } from '../../core/store.js';
+import { LogOut, RotateCcw, Lock } from 'lucide-react';
+import { useDb, updateChild, childSpentToday, resetDemo, unlockPhone } from '../../core/store.js';
 import { Top } from '../MobileApp.jsx';
 import { inr, initials, useToast } from '../../ui.jsx';
 
@@ -17,6 +17,7 @@ export default function Family({ user, signOut }) {
           return (
             <div className="card" key={m.id}>
               <div className="row"><span className="avatar lg">{initials(m.name)}</span><div className="grow"><b>{m.name}</b><br /><small className="muted">Member · named you as trusted contact</small></div><span className="pill fill c-low">Linked</span></div>
+              {m.lock && <button className="btn sm" onClick={() => { unlockPhone(m.id, user.id, 'guardian'); toast(`${m.name.split(' ')[0]}’s phone is unlocked`); }}><Lock size={15} />Phone locked · unlock</button>}
               <small className="muted">{checked} payment{checked === 1 ? '' : 's'} checked by PayShield. You only see a payment when {m.name.split(' ')[0]} chooses to share it or presses the pressure button.</small>
             </div>
           );
@@ -26,6 +27,7 @@ export default function Family({ user, signOut }) {
           return (
             <div className="card" key={k.id}>
               <div className="row"><span className="avatar lg" style={{ color: 'var(--t-med)' }}>{initials(k.name)}</span><div className="grow"><b>{k.name}</b><br /><small className="muted">Child · age {k.age} · balance {inr(k.balance)}</small></div><span className="pill fill c-med">Child</span></div>
+              {k.lock && <button className="btn sm" onClick={() => { unlockPhone(k.id, user.id, 'guardian'); toast(`${k.name.split(' ')[0]}’s phone is unlocked`); }}><Lock size={15} />Phone locked · unlock</button>}
               <div className="field">
                 <label htmlFor={`lim-${k.id}`}>Daily limit · {inr(k.dailyLimit)}</label>
                 <input id={`lim-${k.id}`} type="range" className="range" min="100" max="2000" step="100" value={k.dailyLimit} onChange={(e) => updateChild(k.id, { dailyLimit: Number(e.target.value) }, user.id)} />

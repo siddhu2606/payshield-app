@@ -1,5 +1,5 @@
-import { PhoneCall, ShieldAlert, Baby, Hand } from 'lucide-react';
-import { useDb, resolveRequest, resolveChildPayment } from '../../core/store.js';
+import { PhoneCall, ShieldAlert, Baby, Hand, Lock } from 'lucide-react';
+import { useDb, resolveRequest, resolveChildPayment, unlockPhone } from '../../core/store.js';
 import { Top, Bellbtn } from '../MobileApp.jsx';
 import { inr, initials, ago, StatusPill, TierPill, ReasonList, StoryVsFacts, useToast, useNow } from '../../ui.jsx';
 
@@ -13,13 +13,20 @@ export default function Alerts({ user }) {
 
   const act = (r, ok) => {
     (r.childPayment ? resolveChildPayment : resolveRequest)(r.id, ok, user.id);
-    toast(ok ? 'Approved. They’ve been told.' : 'Declined. They’ve been told.');
+    toast(ok ? 'Approved. They’ve been told.' : 'Stopped. Their phone is now locked and the call was cut.');
   };
 
   return (
     <>
       <Top avatar={<span className="avatar" style={{ color: '#b892ff' }}>{initials(user.name)}</span>} title="Alerts" sub={pending.length ? `${pending.length} need${pending.length === 1 ? 's' : ''} you` : 'All clear'} right={<Bellbtn userId={user.id} />} />
       <div className="m-body">
+        {Object.values(db.users).filter((u) => u.lock && u.lock.by === user.id).map((u) => (
+          <div key={u.id} className="alert-card mild" style={{ borderColor: 'color-mix(in srgb, var(--accent) 50%, var(--line))' }}>
+            <span className="row"><Lock size={18} color="var(--accent-2)" /><b>{u.name.split(' ')[0]}’s phone is locked</b></span>
+            <small className="muted">You stopped the payment, so PayShield cut the call and locked the phone. Call {u.name.split(' ')[0]} first, then unlock it when they’re safe. It also unlocks with their passcode after a 1-minute cool-off.</small>
+            <button className="btn sm" onClick={() => { unlockPhone(u.id, user.id, 'guardian'); toast(`${u.name.split(' ')[0]}’s phone is unlocked`); }}>Unlock {u.name.split(' ')[0]}’s phone</button>
+          </div>
+        ))}
         {pending.length === 0 && (
           <div className="card" style={{ justifyItems: 'center', textAlign: 'center', padding: 26 }}>
             <span className="avatar lg" style={{ color: 'var(--t-low)' }}><ShieldAlert size={22} /></span>

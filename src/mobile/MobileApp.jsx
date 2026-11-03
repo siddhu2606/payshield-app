@@ -14,6 +14,7 @@ import ChildAsk from './child/ChildAsk.jsx';
 import Alerts from './guardian/Alerts.jsx';
 import Family from './guardian/Family.jsx';
 import CallLayer from './CallLayer.jsx';
+import LockScreen from './LockScreen.jsx';
 import { CallerConsole, CallerLog } from './caller/Caller.jsx';
 
 const SKEY = `ps.session.${(typeof window !== 'undefined' && window.name) || 'main'}`;
@@ -84,6 +85,7 @@ export default function MobileApp() {
 
   let content;
   if (!user) content = <SignIn onSignIn={signIn} />;
+  else if (user.lock && ['member', 'child'].includes(user.role)) content = <LockScreen user={user} />;
   else if (user.role === 'member') content = <MemberApp user={user} signOut={signOut} />;
   else if (user.role === 'child') content = <ChildApp user={user} signOut={signOut} />;
   else if (user.role === 'caller') content = <CallerApp user={user} signOut={signOut} />;

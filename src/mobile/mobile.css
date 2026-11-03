@@ -133,3 +133,16 @@
 .line .mono { color: var(--dim); font-size: 12px; padding-top: 2px; }
 .line.next { border-color: var(--t-crit); background: color-mix(in srgb, var(--t-crit) 10%, var(--panel2)); }
 .line.said { opacity: .5; }
+
+/* phone lock */
+.lock { position: absolute; inset: 0; z-index: 80; display: grid; grid-template-rows: auto 1fr auto; padding: calc(46px + env(safe-area-inset-top, 0px)) 24px calc(26px + env(safe-area-inset-bottom, 0px)); background: radial-gradient(520px 420px at 50% 18%, rgba(61, 139, 255, .22), transparent 70%), linear-gradient(#0a1224, #04060b); text-align: center; animation: fade .3s; overflow-y: auto; }
+.lock-time { display: grid; gap: 2px; }
+.lock-time b { font: 700 64px/1 var(--display); letter-spacing: -.02em; }
+.lock-time span { color: #a9b8d4; font-size: 15px; }
+.lock-body { display: grid; justify-items: center; align-content: center; gap: 12px; padding: 20px 0; }
+.lock-body p { margin: 0; color: #b8c5dd; font-size: 14.5px; max-width: 320px; }
+.lock-badge { width: 76px; height: 76px; border-radius: 24px; display: grid; place-items: center; background: rgba(61, 139, 255, .16); color: var(--accent-2); border: 1px solid rgba(143, 194, 255, .3); position: relative; }
+.lock-mini { position: absolute; right: -6px; bottom: -6px; background: var(--accent); color: #fff; border-radius: 50%; padding: 5px; width: 28px; height: 28px; box-shadow: 0 0 0 3px #0a1224; }
+.lock-card { display: flex; gap: 10px; align-items: flex-start; text-align: left; font-size: 13px; color: #d6e0f2; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .08); border-radius: 14px; padding: 11px 13px; max-width: 330px; }
+.lock-foot { display: grid; gap: 10px; }
+.lock-foot small { color: #8d9cba; }
