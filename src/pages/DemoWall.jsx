@@ -1,3 +1,4 @@
+import { startAdminSession } from '../core/auth.js';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { RotateCcw, ArrowLeft, Maximize2 } from 'lucide-react';
@@ -15,9 +16,9 @@ export default function DemoWall() {
   const toast = useToast();
   const [key, setKey] = useState(0);
   const [showAdmin, setShowAdmin] = useState(true);
+  useState(() => startAdminSession()); // presenter view: signs its own admin frame in, for this tab only, before the frame loads
   useEffect(() => {
     document.title = 'PayShield live demo';
-    try { localStorage.setItem('ps.admin.session', 'a_meera'); } catch { /* ignore */ }
   }, []);
   const base = `${location.pathname}${location.search}`;
   return (

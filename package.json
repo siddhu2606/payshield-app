@@ -9,26 +9,34 @@
     "build": "vite build",
     "build:app": "vite build --mode app",
     "preview": "vite preview",
-    "test": "node --test tests/engine.test.js"
+    "test": "node --test tests/engine.test.js tests/security.test.js",
+    "postinstall": "node scripts/patch-deps.mjs",
+    "sms-relay": "node scripts/sms-relay.mjs"
   },
   "dependencies": {
+    "@capacitor-community/text-to-speech": "^4.1.1",
     "@capacitor/android": "^6.1.2",
     "@capacitor/app": "^6.0.1",
     "@capacitor/core": "^6.1.2",
     "@fontsource/bricolage-grotesque": "^5.0.17",
     "@fontsource/ibm-plex-mono": "^5.0.14",
     "@fontsource/instrument-sans": "^5.0.13",
+    "bcryptjs": "^3.0.3",
     "lucide-react": "^0.441.0",
     "mqtt": "^5.16.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2",
-    "recharts": "^2.12.7"
+    "react-router-dom": "^7.18.5",
+    "recharts": "^2.12.7",
+    "payshield-call-state": "file:plugins/call-state"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2",
     "@vitejs/plugin-react": "^4.3.1",
-    "sharp": "^0.33.5",
-    "vite": "^5.4.8"
+    "sharp": "^0.35.5",
+    "vite": "^6.4.5"
+  },
+  "overrides": {
+    "tar": "^7.5.21"
   }
 }

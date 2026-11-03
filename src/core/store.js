@@ -3,12 +3,17 @@
 // (phone APK, phone browser, laptop) through a relay room — see sync.js. It is the stand-in for the
 // FastAPI + PostgreSQL backend in the plan: the functions below mirror its API contract.
 import { useSyncExternalStore } from 'react';
-import { createSeed, factsFor } from './data.js';
+import { createSeed, factsFor, muleRings } from './data.js';
 import { contextSignals, scoreSignals, needsSafetyCheck } from './risk.js';
-import { scriptById, fillName } from './calls.js';
+import { scriptById, fillName, smsLink } from './calls.js';
 import { initSync, publish, getRoom, clientId, seenRev } from './sync.js';
+import { getDeviceCall } from './device.js';
+import { scanMessage } from './scan.js';
+import { cleanText, cleanUpi, cleanAmount, cleanName, cleanMobile, validRemoteDb, isPin } from './validate.js';
+import { hashPin } from './auth.js';
 
-const KEY = `payshield.db.v4.${getRoom()}`;
+const ROOM = getRoom();
+const KEY = `payshield.db.v5.${ROOM}`;
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('payshield') : null;
 const listeners = new Set();
 let db = load();
@@ -18,7 +23,7 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed?.version === 4) return parsed;
+      if (parsed?.version === 5) return parsed;
     }
   } catch { /* storage unavailable: fall through to a fresh seed */ }
   const fresh = createSeed();
@@ -29,6 +34,31 @@ function load() {
 function persist(next) {
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* private mode: keep in memory */ }
 }
+
+/* ---------- daily backups: one snapshot per day on this device, last 7 kept ---------- */
+const BK = `payshield.backup.${ROOM}.`;
+function dailyBackup() {
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    if (!localStorage.getItem(BK + day)) localStorage.setItem(BK + day, JSON.stringify(db));
+    Object.keys(localStorage).filter((k) => k.startsWith(BK)).sort().reverse().slice(7).forEach((k) => localStorage.removeItem(k));
+  } catch { /* storage full or blocked: skip */ }
+}
+export function listBackups() {
+  try { return Object.keys(localStorage).filter((k) => k.startsWith(BK)).sort().reverse().map((k) => ({ day: k.slice(BK.length), bytes: localStorage.getItem(k).length })); } catch { return []; }
+}
+export function exportState() { return JSON.stringify(db, null, 1); }
+/** Restore a backup (a daily snapshot on this device or an exported file). Rejected unless it validates. */
+export function restoreState(raw, actorId = 'a_meera') {
+  let d;
+  try { d = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return false; }
+  if (!d || typeof d !== 'object') return false;
+  const candidate = { ...d, rev: typeof d.rev === 'number' ? d.rev : 0 };
+  if (!validRemoteDb(candidate)) return false;
+  commit((x) => { Object.keys(x).forEach((k) => delete x[k]); Object.assign(x, candidate); log(x, nameOf(x, actorId), 'Backup restored', `${candidate.transactions.length} payments`); });
+  return true;
+}
+export function restoreBackup(day, actorId) { try { return restoreState(localStorage.getItem(BK + day), actorId); } catch { return false; } }
 
 function emit() { listeners.forEach((l) => l()); }
 
@@ -42,6 +72,7 @@ function commit(mutator) {
   if (next.audit?.length > 150) next.audit.length = 150;
   if (next.notifications?.length > 80) next.notifications.length = 80;
   if (next.calls?.length > 40) next.calls.length = 40;
+  if (next.messages?.length > 60) next.messages.length = 60;
   db = next;
   persist(db);
   channel?.postMessage({ type: 'sync' });
@@ -50,20 +81,24 @@ function commit(mutator) {
   return out;
 }
 
-// State that arrived from another device.
+// State that arrived from another device (already decrypted and shape-checked by sync.js).
 function adoptRemote(remote) {
+  if (!validRemoteDb(remote)) return;
   db = remote;
   persist(db);
   channel?.postMessage({ type: 'sync' });
   emit();
 }
 initSync({ getDb: () => db, adopt: adoptRemote });
+dailyBackup();
 
 function reloadFromStorage() {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
-      db = JSON.parse(raw);
+      const next = JSON.parse(raw);
+      if (next?.version !== 5) return;
+      db = next;
       emit();
       // A frame (demo wall) changed state: the top-level window carries it to other devices.
       if (typeof window !== 'undefined' && window.top === window) publish(db);
@@ -93,16 +128,20 @@ export function activeCallFor(d, userId) {
   return (d.calls || []).find((c) => c.toUserId === userId && c.status === 'active') || null;
 }
 
-// Context = payment history + (simulated, consented) call state. Never call audio or content.
-function fullContext(d, userId, upi, amount) {
+// Context = payment history + consented call state (real on the Android app, simulated from the role-play caller
+// phone) + where the payment came from. Never call audio, numbers or message content.
+function fullContext(d, userId, upi, amount, source) {
   const ctx = contextSignals({ history: historyOf(d, userId), payeeUpi: upi, amount, policy: d.policy });
   const call = activeCallFor(d, userId);
   const useCall = d.users[userId]?.settings?.callState !== false;
-  if (call && useCall) {
-    ctx.active_call = true;
-    if (call.lateNight) ctx.unusual_hour = true;
-  }
-  return { ctx, call };
+  const real = getDeviceCall();
+  if (useCall && real.supported && real.onCall) { ctx.active_call = true; ctx.callKind = real.kind; }
+  else if (call && useCall) { ctx.active_call = true; ctx.callKind = 'simulated'; }
+  if (call && useCall && call.lateNight) ctx.unusual_hour = true;
+  if (useCall && real.supported && real.screenShared) ctx.screen_shared = true;
+  const msg = source?.msgId && (d.messages || []).find((m) => m.id === source.msgId);
+  if (msg) { ctx.from_message = true; ctx.messageFrom = msg.from; }
+  return { ctx, call, msg };
 }
 
 export function lookupPayee(d, userId, upi) {
@@ -112,17 +151,19 @@ export function lookupPayee(d, userId, upi) {
 }
 
 /** POST /api/transactions/initiate: validate and load context before anything is shown to the user. */
-export function previewPayment(userId, upi, amount) {
+export function previewPayment(userId, rawUpi, rawAmount, source) {
   const d = db;
-  if (!upi || !/^[a-z0-9._-]+@[a-z]+$/i.test(upi)) return { error: 'Enter a UPI ID like name@bank.' };
-  if (!Number.isFinite(amount) || amount <= 0) return { error: 'Enter an amount above ₹0.' };
+  const upi = cleanUpi(rawUpi);
+  if (!upi) return { error: 'Enter a UPI ID like name@bank.' };
+  const amount = cleanAmount(rawAmount, 1e9);
+  if (!amount) return { error: 'Enter an amount above ₹0.' };
   if (amount > 1000000) return { error: 'The demo limit is ₹10,00,000 per payment.' };
   const user = d.users[userId];
   if (amount > user.balance) return { error: 'Not enough demo balance for this payment.' };
   if (user.kyc !== 'verified' && amount > 10000) return { error: 'Until your KYC is verified, payments are limited to ₹10,000.' };
-  const { ctx } = fullContext(d, userId, upi, amount);
+  const { ctx } = fullContext(d, userId, upi, amount, source);
   const p = lookupPayee(d, userId, upi);
-  return { ctx, ...p, needsCheck: needsSafetyCheck(ctx) || p.facts.reported };
+  return { ctx, ...p, needsCheck: needsSafetyCheck(ctx) || p.facts.reported || !!p.facts.linkedReported?.length };
 }
 
 /** POST /api/risk/assess: score on the "server" side from context, answers and payee facts. */
@@ -134,9 +175,14 @@ export function assessPayment({ userId, upi, amount, note, purpose, screening })
 }
 
 /* ---------- member payment lifecycle ---------- */
-export function createPayment({ userId, upi, amount, note, purpose, screening, skipped }) {
+export function createPayment({ userId, upi: rawUpi, amount: rawAmount, note: rawNote, purpose, screening, skipped, source }) {
+  // Re-validate on the "server" side: never trust what the form sent.
+  const upi = cleanUpi(rawUpi);
+  const amount = cleanAmount(rawAmount);
+  const note = cleanText(rawNote, 60);
+  if (!upi || !amount || !db.users[userId]) throw new Error('Invalid payment');
   return commit((d) => {
-    const { ctx, call } = fullContext(d, userId, upi, amount);
+    const { ctx, call, msg } = fullContext(d, userId, upi, amount, source);
     const facts = factsFor(d.registry, upi);
     const assessment = scoreSignals({ ...ctx, screening: screening || {}, purpose, facts, note }, d.policy);
     const p = lookupPayee(d, userId, upi);
@@ -144,7 +190,8 @@ export function createPayment({ userId, upi, amount, note, purpose, screening, s
     const tx = {
       id: uid('T'), userId, payeeUpi: upi, payeeName: p.name || upi, amount, note, purpose, createdAt: t,
       status: assessment.tier === 'LOW' ? 'COMPLETED' : 'AWAITING_DECISION', kind: 'assessed',
-      screening: screening || null, screeningSkipped: !!skipped, assessment, facts, callId: call?.id || null,
+      screening: screening || null, screeningSkipped: !!skipped, assessment, facts, callId: call?.id || null, msgId: msg?.id || null,
+      source: msg ? 'sms_link' : ctx.callKind && ctx.callKind !== 'simulated' ? 'real_call' : 'typed',
       timeline: [{ t, label: `Risk assessed: ${assessment.score} (${assessment.tier})` }]
     };
     if (tx.status === 'COMPLETED') {
@@ -152,6 +199,7 @@ export function createPayment({ userId, upi, amount, note, purpose, screening, s
       tx.timeline.push({ t, label: 'Completed with no extra steps' });
     }
     d.transactions.push(tx);
+    if (msg) msg.paymentTxId = tx.id;
     log(d, nameOf(d, userId), 'Payment assessed', `${tx.id} · ₹${amount.toLocaleString('en-IN')} → ${tx.payeeName} · ${assessment.score} ${assessment.tier}`);
     return tx;
   });
@@ -272,19 +320,26 @@ export function childSpentToday(d, childId) {
   return d.transactions.filter((t) => t.userId === childId && t.status === 'COMPLETED' && t.createdAt >= start.getTime()).reduce((a, t) => a + t.amount, 0);
 }
 
-export function childPay({ childId, upi, amount, note }) {
+export function childPay({ childId, upi: rawUpi, amount: rawAmount, note: rawNote, source }) {
   const d = db;
   const child = d.users[childId];
-  if (!Number.isFinite(amount) || amount <= 0) return { error: 'Enter an amount above ₹0.' };
+  const upi = cleanUpi(rawUpi);
+  const amount = cleanAmount(rawAmount, 100000);
+  const note = cleanText(rawNote, 60);
+  if (!upi) return { error: 'Enter a UPI ID like name@bank.' };
+  if (!amount) return { error: 'Enter an amount above ₹0.' };
   if (amount > child.balance) return { error: 'You don’t have enough pocket money for this.' };
   const left = child.dailyLimit - childSpentToday(d, childId);
   const facts = factsFor(d.registry, upi);
   const saved = d.beneficiaries.find((b) => b.userId === childId && b.upi === upi);
   const call = activeCallFor(d, childId);
-  if (child.approveAll || amount > left || !saved || call) {
-    const why = call ? 'Paying during a call with an unknown number' : child.approveAll ? 'Every payment needs approval' : amount > left ? `Above today’s limit (₹${Math.max(0, left)} left)` : 'New payee';
+  const real = getDeviceCall();
+  const onCall = call || (real.supported && real.onCall);
+  const msg = source?.msgId && (d.messages || []).find((m) => m.id === source.msgId);
+  if (child.approveAll || amount > left || !saved || onCall || msg) {
+    const why = msg ? `Opened from a link in a message from ${msg.from}` : onCall ? 'Paying during a call with an unknown number' : child.approveAll ? 'Every payment needs approval' : amount > left ? `Above today’s limit (₹${Math.max(0, left)} left)` : 'New payee';
     const req = commit((x) => {
-      const r = { id: uid('R'), kind: 'child', callId: call?.id || null, fromUserId: childId, toUserId: child.guardianId, amount, reason: note || 'Payment', payeeUpi: upi, payeeName: saved?.name || x.registry[upi]?.name || upi, why, facts, status: 'pending', createdAt: Date.now(), childPayment: true };
+      const r = { id: uid('R'), kind: 'child', callId: call?.id || null, msgId: msg?.id || null, fromUserId: childId, toUserId: child.guardianId, amount, reason: note || 'Payment', payeeUpi: upi, payeeName: saved?.name || x.registry[upi]?.name || upi, why, facts, status: 'pending', createdAt: Date.now(), childPayment: true };
       x.requests.unshift(r);
       notify(x, child.guardianId, { title: `${child.name.split(' ')[0]} needs your OK`, body: `₹${amount.toLocaleString('en-IN')} to ${r.payeeName} · ${why}`, link: 'alerts' });
       log(x, child.name, 'Child payment sent for approval', `${r.id} · ${why}`);
@@ -301,7 +356,10 @@ export function childPay({ childId, upi, amount, note }) {
   return { tx };
 }
 
-export function childAsk({ childId, amount, reason }) {
+export function childAsk({ childId, amount: rawAmount, reason: rawReason }) {
+  const amount = cleanAmount(rawAmount, 100000);
+  const reason = cleanText(rawReason, 40) || 'Pocket money';
+  if (!amount) return null;
   return commit((d) => {
     const child = d.users[childId];
     const r = { id: uid('R'), kind: 'child', fromUserId: childId, toUserId: child.guardianId, amount, reason, status: 'pending', createdAt: Date.now() };
@@ -340,10 +398,15 @@ export function updateSettings(userId, patch) {
   commit((d) => { d.users[userId].settings = { ...d.users[userId].settings, ...patch }; });
 }
 
-export function registerMember({ name, mobile, segment }) {
+export function registerMember({ name: rawName, mobile: rawMobile, segment: rawSegment, pin }) {
+  const name = cleanName(rawName);
+  const mobile = cleanMobile(rawMobile);
+  const segment = ['Salaried', 'Student', 'Business', 'Retired'].includes(rawSegment) ? rawSegment : 'Salaried';
+  if (!name || !mobile || !isPin(pin)) throw new Error('Invalid registration');
+  const pinHash = hashPin(pin);
   return commit((d) => {
     const id = uid('u_');
-    d.users[id] = { id, role: 'member', name, mobile, balance: 25000, kyc: 'pending', trustedContactId: null, settings: { pauseHighRisk: true, pressureButton: true, consentTrusted: false }, created: Date.now() };
+    d.users[id] = { id, role: 'member', name, mobile: `+${mobile.length > 10 ? mobile.slice(0, mobile.length - 10) : '91'} ${mobile.slice(-10, -8)}••• •${mobile.slice(-4)}`, pinHash, balance: 25000, kyc: 'pending', trustedContactId: null, settings: { pauseHighRisk: true, pressureButton: true, consentTrusted: false }, created: Date.now() };
     const k = { id: `KYC-${2042 + d.kyc.length}`, userId: id, name, segment, submittedAt: Date.now(), status: 'pending', checks: { aadhaar: true, pan: true, liveness: true, nameMatch: 88 + Math.floor(Math.random() * 10) } };
     d.kyc.unshift(k);
     log(d, name, 'KYC submitted', k.id);
@@ -395,12 +458,41 @@ export function setPolicy(policy, actorId) {
   commit((d) => { d.policy = policy; log(d, nameOf(d, actorId), 'Policy updated', `Thresholds ${policy.thresholds.medium}/${policy.thresholds.high}/${policy.thresholds.critical}`); });
 }
 
+/* ---------- mule rings (admin) ---------- */
+export { muleRings };
+/** Act on every account in a ring at once: report, freeze inbound credit (lien), or file a case. Simulated. */
+export function ringAction(ringId, action, actorId) {
+  return commit((d) => {
+    const ring = muleRings(d.registry).find((r) => r.id === ringId);
+    if (!ring) return null;
+    const actor = nameOf(d, actorId);
+    const upis = ring.members.map((m) => m.upi);
+    const t = Date.now();
+    d.cases = d.cases || [];
+    if (action === 'report') upis.forEach((u) => { d.registry[u].reported = true; });
+    if (action === 'freeze') upis.forEach((u) => { d.registry[u].frozen = true; d.registry[u].reported = true; });
+    if (action === 'unfreeze') upis.forEach((u) => { d.registry[u].frozen = false; });
+    if (action === 'str' || action === 'i4c') {
+      const victims = d.transactions.filter((x) => upis.includes(x.payeeUpi) && x.kind === 'assessed');
+      d.cases.unshift({
+        id: uid(action === 'str' ? 'STR-' : 'I4C-'), type: action, ringId, t, by: actor, accounts: upis, devices: ring.devices, phones: ring.phones,
+        attempts: victims.length, amount: victims.reduce((a, x) => a + x.amount, 0), stopped: victims.filter((x) => x.status !== 'COMPLETED').length
+      });
+    }
+    const label = { report: 'Ring reported', freeze: 'Ring frozen (lien on inbound credits)', unfreeze: 'Ring unfrozen', str: 'STR drafted for FIU-IND', i4c: 'Shared with cyber-crime suspect registry' }[action];
+    log(d, actor, label, `${ringId} · ${upis.length} accounts`);
+    return label;
+  });
+}
+
 export function toggleReported(upi, actorId) {
   commit((d) => { const r = d.registry[upi]; r.reported = !r.reported; log(d, nameOf(d, actorId), r.reported ? 'Payee marked as reported' : 'Report removed', upi); });
 }
 
 export function addRoleplay(row) {
-  commit((d) => { d.roleplay.unshift({ id: uid('RP'), t: Date.now(), ...row }); });
+  const fix = {};
+  Object.entries(row).forEach(([k, v]) => { fix[k] = typeof v === 'string' ? cleanText(v, 140) : typeof v === 'number' ? Math.max(0, Math.min(36000, v)) : v; });
+  commit((d) => { d.roleplay.unshift({ id: uid('RP'), t: Date.now(), ...fix }); });
 }
 export function removeRoleplay(id) {
   commit((d) => { d.roleplay = d.roleplay.filter((r) => r.id !== id); });
@@ -451,6 +543,40 @@ export function pushPaymentRequest(id) {
     c.messages.push({ id: uid('M'), t: Date.now(), from: c.callerId, ...p, text: `Pay ₹${p.amount.toLocaleString('en-IN')} to ${p.upi} (${p.note}). Do it now and stay on the line.` });
   });
 }
+
+/* ---------- scam SMS with a payment link (role-play caller phone) ---------- */
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const newCode = () => Array.from(globalThis.crypto.getRandomValues(new Uint8Array(6)), (b) => CODE_CHARS[b % CODE_CHARS.length]).join('');
+
+/** Send the script's scam SMS to the demo member or child. `real` also asks the laptop relay to send it by Twilio. */
+export function sendScamSms({ toUserId, scriptId, real }) {
+  return commit((d) => {
+    d.messages = d.messages || [];
+    const sc = scriptById(scriptId);
+    if (!sc?.sms || !d.users[toUserId]) return null;
+    const code = newCode();
+    const link = smsLink(code, ROOM);
+    const text = sc.sms.text.replace('{link}', link);
+    const scan = scanMessage(text, { from: sc.sms.from, registry: d.registry });
+    const m = { id: uid('M'), code, toUserId, scriptId, from: sc.sms.from, text, link, payment: { ...sc.payment }, t: Date.now(), read: false, scan: { score: scan.score, verdict: scan.verdict }, real: real ? { status: 'queued', at: Date.now() } : null };
+    d.messages.unshift(m);
+    log(d, 'Caller (simulation)', real ? 'Scam SMS sent (real SMS requested)' : 'Scam SMS sent', `${m.id} · ${sc.label} → ${nameOf(d, toUserId)} · scan ${scan.score}`);
+    return m;
+  });
+}
+export function markMessageRead(id) {
+  commit((d) => { const m = (d.messages || []).find((x) => x.id === id); if (m && !m.read) m.read = true; });
+}
+/** The person tapped the link in the message (in the demo inbox or a real SMS). */
+export function linkOpened(code, userId) {
+  return commit((d) => {
+    const m = (d.messages || []).find((x) => x.code === code);
+    if (!m) return null;
+    if (!m.openedAt) { m.openedAt = Date.now(); m.openedBy = userId; m.read = true; log(d, nameOf(d, userId), 'Payment link opened', `${m.id} · PayShield intercepted`); }
+    return m;
+  });
+}
+export const messageByCode = (d, code) => (d.messages || []).find((x) => x.code === code) || null;
 
 /** What happened to the money on this call, for the caller's simulation view and the role-play log. */
 export function callOutcome(d, c) {

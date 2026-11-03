@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Send, HandCoins, LogOut } from 'lucide-react';
 import { useDb, historyOf, childSpentToday } from '../../core/store.js';
 import { Top, Bellbtn } from '../MobileApp.jsx';
+import { InboxButton } from '../MessageLayer.jsx';
 import { inr, initials, ago, StatusPill, SyncBadge } from '../../ui.jsx';
 
 export default function ChildHome({ user, signOut }) {
@@ -13,7 +14,7 @@ export default function ChildHome({ user, signOut }) {
   const reqs = db.requests.filter((r) => r.fromUserId === user.id).slice(0, 4);
   return (
     <>
-      <Top avatar={<span className="avatar" style={{ color: 'var(--t-med)' }}>{initials(user.name)}</span>} title={`Hey ${user.name.split(' ')[0]}`} sub="Child account" right={<Bellbtn userId={user.id} />} />
+      <Top avatar={<span className="avatar" style={{ color: 'var(--t-med)' }}>{initials(user.name)}</span>} title={`Hey ${user.name.split(' ')[0]}`} sub="Child account" right={<span className="row" style={{ gap: 6 }}><InboxButton userId={user.id} /><Bellbtn userId={user.id} /></span>} />
       <div className="m-body">
         <div className="child-hero">
           <small style={{ color: '#c9d3ff' }}>Pocket money</small>

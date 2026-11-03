@@ -6,6 +6,7 @@ import { Phone, PhoneOff, MessageSquare, Volume2, VolumeX, ChevronDown, ChevronU
 import { useDb, answerCall, endCall } from '../core/store.js';
 import { useClock } from './caller/Caller.jsx';
 import { inr } from '../ui.jsx';
+import { speak as say, prime, stopSpeaking } from '../core/speech.js';
 
 export default function CallLayer({ user }) {
   const db = useDb();
@@ -27,9 +28,7 @@ export default function CallLayer({ user }) {
     if (n > spoken.current) {
       const line = call.transcript[n - 1].text;
       spoken.current = n;
-      if (speak && 'speechSynthesis' in window) {
-        try { const u = new SpeechSynthesisUtterance(line); u.lang = 'en-IN'; u.rate = 1.02; u.pitch = 0.8; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch { /* ignore */ }
-      }
+      if (speak) say(line, { rate: 1, pitch: 0.8 });
     }
   }, [call?.transcript?.length, call?.status, speak]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -46,7 +45,7 @@ export default function CallLayer({ user }) {
         </div>
         <div className="answer-row">
           <button className="callbtn decline" onClick={() => endCall(call.id, 'victim')} aria-label="Decline"><PhoneOff size={28} /></button>
-          <button className="callbtn accept" onClick={() => { answerCall(call.id); try { speechSynthesis?.cancel(); } catch { /* ignore */ } }} aria-label="Accept"><Phone size={28} /></button>
+          <button className="callbtn accept" onClick={() => { prime(); answerCall(call.id); }} aria-label="Accept"><Phone size={28} /></button>
         </div>
         <small className="sim-note">Simulated call for the role-play. No real call is made.</small>
       </div>
@@ -64,9 +63,9 @@ export default function CallLayer({ user }) {
     <div className="oncall">
       <div className="oncall-bar">
         <span className="live-dot" /><b className="grow">On call · {call.callerId}</b><span className="mono">{time}</span>
-        <button className="iconbtn sm" onClick={() => setSpeak(!speak)} aria-label={speak ? 'Mute caller voice' : 'Read caller lines aloud'}>{speak ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
+        <button className="iconbtn sm" onClick={() => { if (speak) stopSpeaking(); else { prime(); if (last) say(last.text, { pitch: 0.8 }); } setSpeak(!speak); }} aria-label={speak ? 'Mute caller voice' : 'Read caller lines aloud'}>{speak ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
         <button className="iconbtn sm" onClick={() => setOpen(!open)} aria-label={open ? 'Collapse' : 'Expand'}>{open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</button>
-        <button className="iconbtn sm hang" onClick={() => endCall(call.id, 'victim')} aria-label="Hang up"><PhoneOff size={15} /></button>
+        <button className="iconbtn sm hang" onClick={() => { stopSpeaking(); endCall(call.id, 'victim'); }} aria-label="Hang up"><PhoneOff size={15} /></button>
       </div>
       {last && <p className="caption">“{last.text}”</p>}
       {open && call.transcript.length > 1 && (

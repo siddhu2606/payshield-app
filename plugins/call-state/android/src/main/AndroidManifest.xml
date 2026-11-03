@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Only to know whether a SIM call is ringing or in progress. Never the number, the audio or call logs. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+</manifest>

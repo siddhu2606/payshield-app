@@ -17,7 +17,10 @@ export const DEFAULT_POLICY = {
     claim_unconfirmed: 10,
     mule_pattern: 15,
     reported_payee: 20,
-    script_words: 10
+    script_words: 10,
+    link_from_message: 15,
+    screen_shared: 15,
+    linked_to_reported: 20
   },
   thresholds: { medium: 25, high: 50, critical: 75 },
   amountMultiple: 3,
@@ -40,7 +43,10 @@ export const WEIGHT_LABELS = {
   claim_unconfirmed: 'Organisation named, account unconfirmed',
   mule_pattern: 'New account paid by many people',
   reported_payee: 'Payee reported by other users',
-  script_words: 'Scam-script words in the note'
+  script_words: 'Scam-script words in the note',
+  link_from_message: 'Opened from a payment link in a message',
+  screen_shared: 'Screen is being shared or mirrored',
+  linked_to_reported: 'Account linked to a reported account'
 };
 
 export const QUESTIONS = [
@@ -126,7 +132,9 @@ export function scoreSignals(signals, policy = DEFAULT_POLICY) {
   if (signals.amount_unusual) add('amount_unusual', 'context', signals.amountRatio ? `About ${Math.round(signals.amountRatio)}× your usual payment.` : 'Much larger than your usual payments.');
   if (signals.rapid_transactions) add('rapid_transactions', 'context', signals.recentCount ? `${signals.recentCount} payments in the last few minutes.` : 'Several payments close together.');
   if (signals.unusual_hour) add('unusual_hour', 'context', 'Late-night payments are unusual for you.');
-  if (signals.active_call) add('active_call', 'context', 'You’re paying during a call with a number not in your contacts (call state, with permission).');
+  if (signals.active_call) add('active_call', 'context', signals.callKind === 'phone' ? 'A real phone call is in progress on this phone right now (call state only, with permission).' : signals.callKind === 'internet' ? 'An internet call (WhatsApp or similar) is in progress on this phone right now.' : 'You’re paying during a call with a number not in your contacts (call state, with permission).');
+  if (signals.screen_shared) add('screen_shared', 'context', 'Another screen or a screen-sharing app can see this phone. Scammers use this to watch you type.');
+  if (signals.from_message) add('link_from_message', 'context', signals.messageFrom ? `This payment was opened from a link in a message from ${signals.messageFrom}, not typed by you.` : 'This payment was opened from a link in a message, not typed by you.');
 
   if (s.external_pressure) add('external_pressure', 'answers', 'You said someone is pressuring you.');
   if (s.threat_reported) add('threat_reported', 'answers', 'You said someone threatened a serious consequence.');
@@ -139,6 +147,7 @@ export function scoreSignals(signals, policy = DEFAULT_POLICY) {
   if (svf?.kind === 'unconfirmed') add('claim_unconfirmed', 'facts', svf.fact);
   if (f && f.type !== 'unknown' && f.ageDays < 30 && f.senders24h >= 10) add('mule_pattern', 'facts', `Opened ${f.ageDays} day${f.ageDays === 1 ? '' : 's'} ago, paid by ${f.senders24h} different people today.`);
   if (f?.reported) add('reported_payee', 'facts', 'Other users have reported this account.');
+  else if (f?.linkedReported?.length) add('linked_to_reported', 'facts', `Shares ${f.linkedVia || 'a device and phone number'} with ${f.linkedReported.length === 1 ? 'an account' : `${f.linkedReported.length} accounts`} already reported for fraud.`);
 
   const words = findScriptWords(signals.note);
   if (words.length) add('script_words', 'answers', `Note mentions: ${words.slice(0, 3).map((x) => `“${x}”`).join(', ')}.`);
@@ -180,5 +189,5 @@ export function baselineScore(signals, policy = DEFAULT_POLICY) {
 
 /** Show a safety check only when context gives a reason to. Routine payments stay friction-free. */
 export function needsSafetyCheck(ctx) {
-  return Boolean(ctx.new_beneficiary || ctx.amount_unusual || ctx.rapid_transactions || ctx.active_call);
+  return Boolean(ctx.new_beneficiary || ctx.amount_unusual || ctx.rapid_transactions || ctx.active_call || ctx.from_message || ctx.screen_shared);
 }

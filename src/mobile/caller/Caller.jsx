@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Phone, PhoneOff, Moon, Send, MessageSquareQuote, LogOut, AlertTriangle, ShieldCheck, Check, Hourglass, CircleSlash, Radio, Lock } from 'lucide-react';
-import { useDb, startCall, endCall, sayLine, pushPaymentRequest, callOutcome, fillName } from '../../core/store.js';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { Phone, PhoneOff, Moon, Send, MessageSquareQuote, LogOut, AlertTriangle, ShieldCheck, Check, Hourglass, CircleSlash, Radio, Lock, MessageSquare, Smartphone, Link2 } from 'lucide-react';
+import { useDb, startCall, endCall, sayLine, pushPaymentRequest, callOutcome, fillName, sendScamSms } from '../../core/store.js';
+import { syncStatus } from '../../core/sync.js';
 import { SCRIPTS, scriptById } from '../../core/calls.js';
 import { TIER } from '../../core/risk.js';
 import { Top } from '../MobileApp.jsx';
@@ -33,6 +34,11 @@ export function CallerConsole({ user, signOut }) {
   const [scriptId, setScriptId] = useState('digital_arrest');
   const [late, setLate] = useState(true);
   const [lastId, setLastId] = useState(null);
+  const [mode, setMode] = useState('call');
+  const [real, setReal] = useState(false);
+  const [sentAt, setSentAt] = useState(0);
+  const sync = useSyncExternalStore(syncStatus.subscribe, syncStatus.get);
+  const relay = sync.relay?.online ? sync.relay : null;
   const ended = !call && lastId && db.calls.find((c) => c.id === lastId);
   const role = TARGETS.find((t) => t[0] === target)[1];
   const scripts = SCRIPTS.filter((s) => s.target === role);
@@ -46,11 +52,15 @@ export function CallerConsole({ user, signOut }) {
       <div className="m-body">
         <div className="tier-banner tb-CRITICAL" style={{ gap: 4 }}>
           <b style={{ fontSize: 15 }}>Simulation only</b>
-          <p style={{ fontSize: 13 }}>This phone plays the scammer so the team can test PayShield live. It calls the demo member or child phone, no real number.</p>
+          <p style={{ fontSize: 13 }}>This phone plays the scammer so the team can test PayShield live. It calls and texts the demo member or child phone. A real SMS only goes to the team’s own verified number, through the laptop relay.</p>
         </div>
-        {ended && <CallSummary call={ended} db={db} />}
+        <div className="seg">
+          <button className={mode === 'call' ? 'on' : ''} onClick={() => setMode('call')}><Phone size={15} /> Scam call</button>
+          <button className={mode === 'sms' ? 'on' : ''} onClick={() => setMode('sms')}><MessageSquare size={15} /> Scam SMS + link</button>
+        </div>
+        {mode === 'call' && ended && <CallSummary call={ended} db={db} />}
         <div className="card">
-          <span className="eyebrow">Who to call</span>
+          <span className="eyebrow">{mode === 'call' ? 'Who to call' : 'Who to text'}</span>
           <div className="seg">
             {TARGETS.map(([id]) => <button key={id} className={target === id ? 'on' : ''} onClick={() => setTarget(id)}>{db.users[id]?.name.split(' ')[0]} · {db.users[id]?.role}</button>)}
           </div>
@@ -61,19 +71,37 @@ export function CallerConsole({ user, signOut }) {
             {scripts.map((s) => (
               <button key={s.id} className="li" onClick={() => setScriptId(s.id)} style={{ background: scriptId === s.id ? 'color-mix(in srgb, var(--t-crit) 12%, transparent)' : undefined, borderRadius: 10, paddingInline: 8 }}>
                 <span className="avatar" style={{ color: 'var(--t-crit)' }}><MessageSquareQuote size={16} /></span>
-                <span className="t"><b>{s.label}</b><small>{s.persona} · asks {inr(s.payment.amount)}</small></span>
+                <span className="t"><b>{s.label}</b><small>{mode === 'sms' ? `From ${s.sms.from} · asks ${inr(s.payment.amount)}` : `${s.persona} · asks ${inr(s.payment.amount)}`}</small></span>
                 {scriptId === s.id && <Check size={18} color="var(--t-crit)" />}
               </button>
             ))}
           </div>
         </div>
-        <label className="card toggle-row" style={{ padding: '12px 16px' }}>
-          <span className="row"><Moon size={18} color="var(--accent-2)" /><span>Late-night call<small>Pretend it’s 11:40 pm on the victim’s phone</small></span></span>
-          <input type="checkbox" className="switch" checked={late} onChange={(e) => setLate(e.target.checked)} />
-        </label>
-        <button className="btn danger block" style={{ padding: 16, fontSize: 16 }} onClick={() => { const c = startCall({ toUserId: target, scriptId, lateNight: late }); setLastId(c.id); }}>
-          <Phone size={19} />Call {db.users[target]?.name.split(' ')[0]}
-        </button>
+        {mode === 'call' && <>
+          <label className="card toggle-row" style={{ padding: '12px 16px' }}>
+            <span className="row"><Moon size={18} color="var(--accent-2)" /><span>Late-night call<small>Pretend it’s 11:40 pm on the victim’s phone</small></span></span>
+            <input type="checkbox" className="switch" checked={late} onChange={(e) => setLate(e.target.checked)} />
+          </label>
+          <button className="btn danger block" style={{ padding: 16, fontSize: 16 }} onClick={() => { const c = startCall({ toUserId: target, scriptId, lateNight: late }); setLastId(c.id); }}>
+            <Phone size={19} />Call {db.users[target]?.name.split(' ')[0]}
+          </button>
+        </>}
+        {mode === 'sms' && <>
+          <div className="card" style={{ gap: 8 }}>
+            <span className="eyebrow">The message</span>
+            <div className="bubble">{scriptById(scriptId)?.sms?.text.replace('{link}', 'https://…/#/app/l/XXXXXX')}</div>
+            <small className="muted">The link opens PayShield’s payment screen with the scammer’s UPI ID and amount filled in, the way real scam links open a payment app.</small>
+          </div>
+          <label className="card toggle-row" style={{ padding: '12px 16px', opacity: relay ? 1 : 0.65 }}>
+            <span className="row"><Smartphone size={18} color="var(--t-high)" /><span>Also send as a real SMS<small>{relay ? `Twilio relay online · ${relay.mode === 'live' ? `live, ${relay.sentToday}/${relay.cap} used today` : 'dry run: logs only, sends nothing'}` : 'Needs the SMS relay running on the team laptop (npm run sms-relay)'}</small></span></span>
+            <input type="checkbox" className="switch" disabled={!relay} checked={!!relay && real} onChange={(e) => setReal(e.target.checked)} />
+          </label>
+          <button className="btn danger block" style={{ padding: 16, fontSize: 16 }} disabled={Date.now() - sentAt < 4000}
+            onClick={() => { sendScamSms({ toUserId: target, scriptId, real: !!relay && real }); setSentAt(Date.now()); setTimeout(() => setSentAt(0), 4100); }}>
+            <Send size={19} />Text {db.users[target]?.name.split(' ')[0]}
+          </button>
+          <SmsLog db={db} />
+        </>}
       </div>
     </>
   );
@@ -133,6 +161,44 @@ function CallSummary({ call, db }) {
       <span className="eyebrow">Last call · {sc.label}</span>
       <span className={`row ${O.cls}`} style={{ fontWeight: 700, fontSize: 16 }}><O.Icon size={19} />{O.label}</span>
       <small className="muted">{out.paid ? `${inr(out.paid)} sent (simulated)` : out.state === 'locked' ? '₹0 lost. The guardian stopped the payment, the call was cut and the phone locked.' : out.state === 'blocked' ? '₹0 lost. A locked phone doesn’t take calls.' : `₹0 lost. PayShield ${out.state === 'declined' ? 'wasn’t needed' : 'held the line'}.`}</small>
+    </div>
+  );
+}
+
+const REAL = { queued: 'Real SMS: waiting for relay', sent: 'Real SMS sent', dry_run: 'Relay dry run: not sent', failed: 'Real SMS failed', cap_reached: 'Daily SMS cap reached', no_number: 'No phone number set', expired: 'Real SMS expired', rejected: 'Rejected by relay' };
+
+function smsOutcome(db, m) {
+  const tx = m.paymentTxId && db.transactions.find((t) => t.id === m.paymentTxId);
+  const req = db.requests.find((r) => r.msgId === m.id);
+  if (tx) {
+    if (tx.status === 'COMPLETED') return { label: `Paid ${inr(tx.amount)}: scam succeeded`, cls: 'c-crit', tier: tx.assessment?.tier, score: tx.assessment?.score };
+    if (['CANCELLED', 'POSTPONED'].includes(tx.status)) return { label: 'Link opened, payment stopped', cls: 'c-low', tier: tx.assessment?.tier, score: tx.assessment?.score };
+    return { label: 'Link opened, PayShield paused it', cls: 'c-high', tier: tx.assessment?.tier, score: tx.assessment?.score };
+  }
+  if (req) return { label: req.status === 'approved' ? 'Guardian approved' : req.status === 'denied' ? 'Guardian stopped it' : 'Sent to guardian for approval', cls: req.status === 'approved' ? 'c-crit' : req.status === 'denied' ? 'c-low' : 'c-high' };
+  if (m.openedAt) return { label: 'Link opened, no payment yet', cls: 'c-high' };
+  if (m.read) return { label: 'Read, link not tapped', cls: 'c-mute' };
+  return { label: 'Delivered', cls: 'c-mute' };
+}
+
+function SmsLog({ db }) {
+  const msgs = (db.messages || []).slice(0, 6);
+  if (!msgs.length) return null;
+  return (
+    <div className="card">
+      <span className="eyebrow">Sent texts · live</span>
+      <div className="list">
+        {msgs.map((m) => {
+          const o = smsOutcome(db, m);
+          return (
+            <div className="li" key={m.id}>
+              <span className="avatar" style={{ color: 'var(--t-crit)' }}><Link2 size={16} /></span>
+              <div className="t"><b>{scriptById(m.scriptId)?.label}</b><small>{db.users[m.toUserId]?.name.split(' ')[0]} · {ago(m.t)} · flagged {m.scan?.score}/100{m.real ? ` · ${REAL[m.real.status] || m.real.status}` : ''}</small></div>
+              <span style={{ display: 'grid', justifyItems: 'end', gap: 4 }}>{o.tier && <TierPill tier={o.tier} score={o.score} />}<span className={`pill fill ${o.cls}`}>{o.label}</span></span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

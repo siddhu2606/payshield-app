@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, NavLink, useSearchParams, useNavigate } from '
 import { Home, Send, Clock, ShieldCheck, Bell, Users, HandCoins, Wallet, UserRound, ArrowLeft, Baby, Check, Camera, IdCard, ChevronRight, Delete, PhoneCall, ListChecks } from 'lucide-react';
 import { useDb, registerMember, markNotificationsRead } from '../core/store.js';
 import { PERSONAS } from '../core/data.js';
+import { cleanName, cleanMobile } from '../core/validate.js';
 import { Logo, Sheet, ago, initials, SyncBadge } from '../ui.jsx';
 import MemberHome from './member/MemberHome.jsx';
 import PayFlow from './member/PayFlow.jsx';
@@ -14,6 +15,9 @@ import ChildAsk from './child/ChildAsk.jsx';
 import Alerts from './guardian/Alerts.jsx';
 import Family from './guardian/Family.jsx';
 import CallLayer from './CallLayer.jsx';
+import MessageLayer, { LinkOpen } from './MessageLayer.jsx';
+import { startCallWatch } from '../core/device.js';
+import { checkPin, gate, fail, succeed } from '../core/auth.js';
 import LockScreen from './LockScreen.jsx';
 import { CallerConsole, CallerLog } from './caller/Caller.jsx';
 
@@ -82,6 +86,7 @@ export default function MobileApp() {
   const signIn = (s) => { writeSession(s); setSession(s); };
   const signOut = () => { writeSession(null); setSession(null); };
   const user = session && db.users[session.userId];
+  useEffect(() => { if (user && ['member', 'child'].includes(user.role)) startCallWatch(); }, [user?.role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   let content;
   if (!user) content = <SignIn onSignIn={signIn} />;
@@ -98,7 +103,7 @@ function Tabs({ items }) {
   return (
     <nav className="m-tabs" aria-label="Main">
       {items.map(([to, label, Icon, badge]) => (
-        <NavLink key={to} to={to} className={({ isActive }) => (isActive ? 'active' : '')}>
+        <NavLink key={to} to={`/app/${to}`} className={({ isActive }) => (isActive ? 'active' : '')}>
           <Icon size={22} />{label}{badge ? <span className="badge">{badge}</span> : null}
         </NavLink>
       ))}
@@ -112,12 +117,14 @@ function MemberApp({ user, signOut }) {
   return (
     <>
       <CallLayer user={user} />
+      <MessageLayer user={user} />
       <Routes>
         <Route path="home" element={<MemberHome user={user} />} />
+        <Route path="l/:code" element={<LinkOpen user={user} />} />
         <Route path="pay" element={<PayFlow user={user} />} />
         <Route path="activity" element={<Activity user={user} />} />
         <Route path="safety" element={<Safety user={user} signOut={signOut} />} />
-        <Route path="*" element={<Navigate to="home" replace />} />
+        <Route path="*" element={<Navigate to="/app/home" replace />} />
       </Routes>
       <Tabs items={[['home', 'Home', Home], ['pay', 'Pay', Send], ['activity', 'Activity', Clock, waiting], ['safety', 'Safety', ShieldCheck]]} />
     </>
@@ -128,11 +135,13 @@ function ChildApp({ user, signOut }) {
   return (
     <>
       <CallLayer user={user} />
+      <MessageLayer user={user} />
       <Routes>
         <Route path="home" element={<ChildHome user={user} signOut={signOut} />} />
+        <Route path="l/:code" element={<LinkOpen user={user} />} />
         <Route path="pay" element={<ChildPay user={user} />} />
         <Route path="ask" element={<ChildAsk user={user} />} />
-        <Route path="*" element={<Navigate to="home" replace />} />
+        <Route path="*" element={<Navigate to="/app/home" replace />} />
       </Routes>
       <Tabs items={[['home', 'Home', Wallet], ['pay', 'Pay', Send], ['ask', 'Ask', HandCoins]]} />
     </>
@@ -147,7 +156,7 @@ function GuardianApp({ user, signOut }) {
       <Routes>
         <Route path="alerts" element={<Alerts user={user} />} />
         <Route path="family" element={<Family user={user} signOut={signOut} />} />
-        <Route path="*" element={<Navigate to="alerts" replace />} />
+        <Route path="*" element={<Navigate to="/app/alerts" replace />} />
       </Routes>
       <Tabs items={[['alerts', 'Alerts', Bell, pending], ['family', 'Family', Users]]} />
     </>
@@ -160,7 +169,7 @@ function CallerApp({ user, signOut }) {
       <Routes>
         <Route path="call" element={<CallerConsole user={user} signOut={signOut} />} />
         <Route path="results" element={<CallerLog />} />
-        <Route path="*" element={<Navigate to="call" replace />} />
+        <Route path="*" element={<Navigate to="/app/call" replace />} />
       </Routes>
       <Tabs items={[['call', 'Call', PhoneCall], ['results', 'Results', ListChecks]]} />
     </>
@@ -204,16 +213,29 @@ function SignIn({ onSignIn }) {
 }
 
 function Passcode({ role, onBack, onOk }) {
+  const db = useDb();
   const [code, setCode] = useState('');
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const userId = PERSONAS[role].id;
+  // Checked against the stored bcrypt hash; 5 wrong tries lock sign-in for 30 s, then longer each time.
+  const verify = async (pin) => {
+    const g = gate(`pin.${userId}`);
+    if (!g.ok) { setErr(`Too many tries. Wait ${Math.ceil(g.waitMs / 1000)} s.`); setCode(''); return; }
+    setBusy(true);
+    const ok = await checkPin(pin, db.users[userId]?.pinHash);
+    setBusy(false);
+    if (ok) { succeed(`pin.${userId}`); onOk(); return; }
+    const after = fail(`pin.${userId}`);
+    setErr(after.ok ? `Wrong passcode. ${after.left} ${after.left === 1 ? 'try' : 'tries'} left before a pause.` : `Too many tries. Wait ${Math.ceil(after.waitMs / 1000)} s.`);
+    setTimeout(() => setCode(''), 300);
+  };
   const press = (k) => {
+    if (busy) return;
     setErr('');
     const next = k === 'del' ? code.slice(0, -1) : (code + k).slice(0, 4);
     setCode(next);
-    if (next.length === 4) {
-      if (next === '1234') setTimeout(onOk, 150);
-      else { setErr('That’s not the demo passcode. Try 1234.'); setTimeout(() => setCode(''), 300); }
-    }
+    if (next.length === 4) verify(next);
   };
   return (
     <>
@@ -228,7 +250,7 @@ function Passcode({ role, onBack, onOk }) {
         <div className="error" style={{ textAlign: 'center', minHeight: 18 }} role="alert">{err}</div>
         <div className="keypad">
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((k) => <button key={k} onClick={() => press(k)}>{k}</button>)}
-          <button onClick={() => { setCode('1234'); setTimeout(onOk, 200); }} style={{ fontSize: 13 }} aria-label="Fill demo passcode">Demo</button>
+          <button onClick={() => { setCode('1234'); verify('1234'); }} style={{ fontSize: 13 }} aria-label="Fill demo passcode">Demo</button>
           <button onClick={() => press('0')}>0</button>
           <button onClick={() => press('del')} aria-label="Delete"><Delete size={20} /></button>
         </div>
@@ -242,7 +264,10 @@ function Onboarding({ onDone, onBack }) {
   const [form, setForm] = useState({ name: 'Rahul Verma', mobile: '+91 90000 00000', segment: 'Salaried' });
   const [ids, setIds] = useState({ aadhaar: false, pan: false });
   const [selfie, setSelfie] = useState('idle');
-  const valid = form.name.trim().length > 2 && form.mobile.replace(/\D/g, '').length >= 10;
+  const [pin, setPin] = useState('');
+  const [err, setErr] = useState('');
+  const valid = cleanName(form.name) && cleanMobile(form.mobile) && /^\d{4}$/.test(pin) && !['0000', '1111', '1234', '4321'].includes(pin);
+  const submit = () => { try { onDone(registerMember({ ...form, pin })); } catch { setErr('Please check your details.'); } };
   const takeSelfie = () => { setSelfie('scanning'); setTimeout(() => setSelfie('ok'), 1600); };
   return (
     <>
@@ -254,6 +279,7 @@ function Onboarding({ onDone, onBack }) {
             <h2 className="h2">About you</h2>
             <div className="field"><label htmlFor="ob-name">Full name</label><input id="ob-name" className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div className="field"><label htmlFor="ob-mob">Mobile number</label><input id="ob-mob" className="input" inputMode="tel" value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} /><span className="help">Demo only. Use a made-up number.</span></div>
+            <div className="field"><label htmlFor="ob-pin">Choose a 4-digit app passcode</label><input id="ob-pin" className="input mono" type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} /><span className="help">Stored only as a bcrypt hash. Avoid easy ones like 1234.</span></div>
             <div className="field"><span className="label">You are</span>
               <div className="chips">{['Salaried', 'Student', 'Business', 'Retired'].map((s) => <button key={s} className={`chip ${form.segment === s ? 'on' : ''}`} onClick={() => setForm({ ...form, segment: s })}>{s}</button>)}</div>
             </div>
@@ -282,7 +308,8 @@ function Onboarding({ onDone, onBack }) {
             <p style={{ textAlign: 'center', margin: 0 }} className="muted">{selfie === 'idle' ? 'Hold the phone at eye level' : selfie === 'scanning' ? 'Checking… blink once' : 'Liveness passed'}</p>
             {selfie !== 'ok'
               ? <button className="btn block" disabled={selfie === 'scanning'} onClick={takeSelfie}>{selfie === 'scanning' ? 'Checking…' : 'Start selfie check'}</button>
-              : <button className="btn block" onClick={() => onDone(registerMember(form))}>Submit for KYC review</button>}
+              : <button className="btn block" onClick={submit}>Submit for KYC review</button>}
+            {err && <div className="error" role="alert">{err}</div>}
             <p className="help" style={{ margin: 0 }}>Your application goes to the risk team’s KYC queue in the admin console. Until it’s approved, payments are limited to ₹10,000.</p>
           </>
         )}

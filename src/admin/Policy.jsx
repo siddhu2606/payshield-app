@@ -7,15 +7,15 @@ import { Head } from './AdminApp.jsx';
 import { TierPill, useToast } from '../ui.jsx';
 
 const GROUPS = [
-  ['Payment context', ['new_beneficiary', 'amount_unusual', 'rapid_transactions', 'unusual_hour', 'active_call']],
+  ['Payment context', ['new_beneficiary', 'amount_unusual', 'rapid_transactions', 'unusual_hour', 'active_call', 'screen_shared', 'link_from_message']],
   ['Safety check answers', ['external_pressure', 'threat_reported', 'secrecy_requested', 'continuous_call', 'script_words']],
-  ['Story vs facts', ['claim_vs_account', 'claim_unconfirmed', 'mule_pattern', 'reported_payee']]
+  ['Story vs facts', ['claim_vs_account', 'claim_unconfirmed', 'mule_pattern', 'reported_payee', 'linked_to_reported']]
 ];
 
 export default function Policy() {
   const db = useDb();
   const toast = useToast();
-  const [draft, setDraft] = useState(() => structuredClone(db.policy));
+  const [draft, setDraft] = useState(() => ({ ...structuredClone(db.policy), weights: { ...DEFAULT_POLICY.weights, ...db.policy.weights } }));
   const res = useMemo(() => runSuite(draft), [draft]);
   const dirty = JSON.stringify(draft) !== JSON.stringify(db.policy);
   const setW = (k, v) => setDraft({ ...draft, weights: { ...draft.weights, [k]: v } });

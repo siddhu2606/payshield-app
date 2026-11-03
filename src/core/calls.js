@@ -9,6 +9,7 @@ export const SCRIPTS = [
     callerId: '+91 70118 •••42',
     shownAs: 'Unknown number',
     persona: 'Inspector Rao, “CBI cyber cell”',
+    sms: { from: 'VK-CBIGOV', text: 'CBI: Aadhaar linked to crime case. Pay Rs50000 now or arrest: {link}' },
     payment: { upi: 'rajesh.k4471@ybldemo', amount: 50000, note: 'CBI verification deposit' },
     lines: [
       'Hello, this is Inspector Rao from the CBI cyber cell, Mumbai. Am I speaking with {name}?',
@@ -29,6 +30,7 @@ export const SCRIPTS = [
     callerId: '+91 81300 •••09',
     shownAs: 'Unknown number',
     persona: '“Bank KYC department”',
+    sms: { from: 'AX-KYCUPD', text: 'KYC expired, SIM blocks tonight. Pay Rs9999 update fee now: {link}' },
     payment: { upi: 'kyc.update.help@axldemo', amount: 9999, note: 'kyc update charges' },
     lines: [
       'Good evening sir, I am calling from your bank’s KYC department. Your KYC has expired.',
@@ -45,6 +47,7 @@ export const SCRIPTS = [
     callerId: '+91 90044 •••77',
     shownAs: 'Unknown number',
     persona: '“Courier customs desk”',
+    sms: { from: 'BZ-CUSTMS', text: 'Customs: parcel held. Pay Rs25000 today or police case: {link}' },
     payment: { upi: 'clearance.desk@pnbdemo', amount: 25000, note: 'customs clearance fee' },
     lines: [
       'Hello, this is the customs desk of the courier company. An international parcel in your name is held.',
@@ -60,6 +63,7 @@ export const SCRIPTS = [
     callerId: '+91 98760 •••15',
     shownAs: 'Unknown number',
     persona: '“VIP trading group admin”',
+    sms: { from: '+91 98760 •••15', text: 'VIP group 300% returns. Pay Rs100000 now, keep it secret: {link}' },
     payment: { upi: 'tradeguru.vip@icicidemo', amount: 100000, note: 'guaranteed returns slot' },
     lines: [
       'Congratulations, you are selected for our VIP trading group. Members made 300% this month.',
@@ -75,6 +79,7 @@ export const SCRIPTS = [
     callerId: '+91 62000 •••31',
     shownAs: 'Unknown number',
     persona: '“Game rewards team”',
+    sms: { from: '+91 62000 •••31', text: 'You won 5000 game coins! Pay Rs300 now, dont tell parents: {link}' },
     payment: { upi: 'gamecoins.topup@okdemo', amount: 300, note: 'Free game coins activation' },
     lines: [
       'Hi {name}! You won 5,000 free coins and a rare skin in your game!',
@@ -87,3 +92,10 @@ export const SCRIPTS = [
 
 export const scriptById = (id) => SCRIPTS.find((s) => s.id === id);
 export const fillName = (line, name) => line.replace('{name}', name);
+
+/** The app URL a scam SMS links to. Opening it lands on the payment screen with the scammer's details filled in. */
+export function smsLink(code, room) {
+  const base = typeof location !== 'undefined' && /^https?:/.test(location.protocol) && !/localhost|127\.0\.0\.1/.test(location.host)
+    ? `${location.origin}${location.pathname}` : 'https://siddhu2606.github.io/payshield-app/';
+  return `${base}#/app/l/${code}${room && room !== 'vslash-vk26' ? `?room=${room}` : ''}`;
+}

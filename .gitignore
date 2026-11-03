@@ -1,5 +1,13 @@
 node_modules/
 dist/
-android/
+/android/
 *.log
 .DS_Store
+# secrets and local state: never commit
+.env
+.env.*
+!.env.example
+.sms-relay.json
+*.keystore
+*.jks
+*.p12

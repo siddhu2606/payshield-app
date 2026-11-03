@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Smartphone, Monitor, MonitorSmartphone, Download, ArrowRight, MessageCircleQuestion, Scale, Gauge as GaugeIc, UserCheck, Github } from 'lucide-react';
+import { Smartphone, Monitor, MonitorSmartphone, Download, ArrowRight, MessageCircleQuestion, Scale, Gauge as GaugeIc, UserCheck, Github, MessageSquareWarning, PhoneCall, Network, Plug, Lock } from 'lucide-react';
 import { Logo, Mark, SyncBadge } from '../ui.jsx';
 import { APK_URL, REPO_URL } from '../config.js';
 
@@ -9,6 +9,14 @@ const STEPS = [
   { Icon: Scale, t: 'Compare the story with the facts', d: '“Police verification” paid into a personal account opened 2 days ago? The caller can coach the answer. They can’t change the account.' },
   { Icon: GaugeIc, t: 'Respond in proportion', d: 'A 0–100 score with plain reasons maps to four tiers: carry on, take a moment, strong warning, stop and verify.' },
   { Icon: UserCheck, t: 'Bring in someone they trust', d: 'With consent, a guardian can check a held payment. A discreet pressure button pauses it quietly.' }
+];
+
+const NEW = [
+  { Icon: MessageSquareWarning, t: 'Scam SMS and payment links', d: 'The scammer can text a link that opens a filled-in payment. PayShield labels the message as a scam, and a payment opened from a message link scores higher.' },
+  { Icon: PhoneCall, t: 'Real call detection', d: 'The Android app knows when a phone or WhatsApp call is in progress, or the screen is being shared, while you pay. It never sees the number or hears the audio.' },
+  { Icon: Network, t: 'Mule rings', d: 'Scammers swap accounts every few payments, but the device and phone behind them repeat. One report flags the whole ring, so the next new account is caught on its first payment.' },
+  { Icon: Plug, t: 'Plugs into banks and UPI apps', d: 'An SDK and a risk API sit before the bank’s own authorisation. PayShield is a safety layer, not a new bank or wallet.' },
+  { Icon: Lock, t: 'Secure by design', d: 'End-to-end encrypted sync, bcrypt-hashed passcodes, rate-limited sign-in, a strict content security policy, and no keys in the app.' }
 ];
 
 export default function Landing() {
@@ -37,7 +45,7 @@ export default function Landing() {
         <article className="door">
           <span className="door-ic"><Smartphone size={24} /></span>
           <h2 className="h3">Mobile app</h2>
-          <p className="muted">One app, four roles: <b>Member</b> pays and stays protected, <b>Child</b> has pocket money and a daily limit, <b>Guardian</b> approves held payments, and <b>Scam caller</b> places simulated fraud calls to test it all live.</p>
+          <p className="muted">One app, four roles: <b>Member</b> pays and stays protected, <b>Child</b> has pocket money and a daily limit, <b>Guardian</b> approves held payments, and <b>Scam caller</b> places simulated fraud calls and sends scam SMS with payment links, to test it all live.</p>
           <div className="door-actions">
             <a className="btn" href={APK_URL}><Download size={17} />Download for Android</a>
             <Link className="btn soft" to="/app">Open in browser<ArrowRight size={16} /></Link>
@@ -47,7 +55,7 @@ export default function Landing() {
         <article className="door">
           <span className="door-ic"><Monitor size={24} /></span>
           <h2 className="h3">Admin risk console</h2>
-          <p className="muted">For the bank’s risk and KYC team: live overview, review queue, KYC approvals, payee registry, tunable policy, scenario suite and role-play results.</p>
+          <p className="muted">For the bank’s risk and KYC team: live overview, review queue, KYC approvals, payee registry, mule-ring network, tunable policy, scenario suite, role-play results, bank integrations and API, and a security review.</p>
           <div className="door-actions"><Link className="btn" to="/admin">Open console<ArrowRight size={16} /></Link></div>
           <small className="dim">Staff ID <span className="mono">RISK-2291</span> · password <span className="mono">demo</span> · code <span className="mono">246810</span></small>
         </article>
@@ -71,6 +79,15 @@ export default function Landing() {
         <div className="tiers" role="img" aria-label="Risk tiers: Low 0 to 24, Medium 25 to 49, High 50 to 74, Critical 75 to 100">
           {[['Low', '0–24', 'var(--t-low)', 'Pays normally'], ['Medium', '25–49', 'var(--t-med)', 'Caution + verify'], ['High', '50–74', 'var(--t-high)', 'Warning, pause, trusted contact'], ['Critical', '75–100', 'var(--t-crit)', 'Stop, review, helpline']].map(([n, r, c, d]) => (
             <div key={n} style={{ '--c': c }}><b>{n}</b><span className="mono">{r}</span><small>{d}</small></div>
+          ))}
+        </div>
+      </section>
+
+      <section className="lp-how">
+        <span className="eyebrow">New in this build</span>
+        <div className="lp-steps">
+          {NEW.map(({ Icon, t, d }) => (
+            <div key={t} className="lp-step"><span className="door-ic sm"><Icon size={19} /></span><b>{t}</b><p className="muted">{d}</p></div>
           ))}
         </div>
       </section>

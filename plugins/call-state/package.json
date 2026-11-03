@@ -1,0 +1,9 @@
+{
+  "name": "payshield-call-state",
+  "version": "1.0.0",
+  "description": "PayShield native call-state signal for Android: is the phone on a call (SIM or VoIP) or is the screen being shared? Never reads numbers, audio or content.",
+  "main": "index.js",
+  "license": "MIT",
+  "capacitor": { "android": { "src": "android" } },
+  "peerDependencies": { "@capacitor/core": "^6.0.0" }
+}

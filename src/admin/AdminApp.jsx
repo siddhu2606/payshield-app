@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Routes, Route, Navigate, NavLink, Link } from 'react-router-dom';
-import { LayoutDashboard, ListChecks, Hourglass, IdCard, Database, SlidersHorizontal, FlaskConical, Users, ScrollText, LogOut, Smartphone, KeyRound } from 'lucide-react';
+import { LayoutDashboard, ListChecks, Hourglass, IdCard, Database, SlidersHorizontal, FlaskConical, Users, ScrollText, LogOut, Smartphone, KeyRound, Network, Plug, ShieldCheck } from 'lucide-react';
+import { checkAdminPassword, checkMfa, adminSession, startAdminSession, touchAdminSession, endAdminSession, gate, fail, succeed } from '../core/auth.js';
 import { useDb } from '../core/store.js';
 import { Logo, initials, SyncBadge } from '../ui.jsx';
 import Overview from './Overview.jsx';
@@ -11,9 +12,10 @@ import Policy from './Policy.jsx';
 import Scenarios from './Scenarios.jsx';
 import Roleplay from './Roleplay.jsx';
 import Audit from './Audit.jsx';
+import Rings from './Rings.jsx';
+import Integrations from './Integrations.jsx';
+import Security from './Security.jsx';
 
-const AKEY = 'ps.admin.session';
-const readAdmin = () => { try { return sessionStorage.getItem(AKEY) || localStorage.getItem(AKEY); } catch { return null; } };
 
 export function Head({ title, sub, right }) {
   return (
@@ -26,19 +28,28 @@ export function Head({ title, sub, right }) {
 
 export default function AdminApp() {
   const db = useDb();
-  const [signed, setSigned] = useState(readAdmin);
+  const [signed, setSigned] = useState(() => adminSession()?.userId || null);
   useEffect(() => { document.title = 'PayShield risk console'; document.documentElement.classList.remove('in-frame'); }, []);
-  const signIn = () => { try { sessionStorage.setItem(AKEY, 'a_meera'); localStorage.setItem(AKEY, 'a_meera'); } catch { /* ignore */ } setSigned('a_meera'); };
-  const signOut = () => { try { sessionStorage.removeItem(AKEY); localStorage.removeItem(AKEY); } catch { /* ignore */ } setSigned(null); };
-  if (!signed) return <Login onDone={signIn} />;
+  // Idle time-out: any activity extends the session; after 20 idle minutes the console returns to sign-in.
+  useEffect(() => {
+    if (!signed) return undefined;
+    const bump = () => touchAdminSession();
+    const check = setInterval(() => { if (!adminSession()) setSigned(null); }, 15e3);
+    ['pointerdown', 'keydown'].forEach((e) => window.addEventListener(e, bump));
+    return () => { clearInterval(check); ['pointerdown', 'keydown'].forEach((e) => window.removeEventListener(e, bump)); };
+  }, [signed]);
+  const signIn = () => { const s = startAdminSession(); setSigned(s.userId); };
+  const signOut = () => { endAdminSession(); setSigned(null); };
+  if (!signed || !db.users[signed] || db.users[signed].role !== 'admin') return <Login onDone={signIn} />;
 
   const review = db.transactions.filter((t) => ['PENDING_REVIEW', 'AWAITING_CONTACT'].includes(t.status)).length;
   const kyc = db.kyc.filter((k) => k.status === 'pending').length;
   const me = db.users.a_meera;
   const NAV = [
     ['Monitor', [['overview', 'Overview', LayoutDashboard], ['payments', 'Payments', ListChecks], ['review', 'Review queue', Hourglass, review], ['kyc', 'KYC queue', IdCard, kyc]]],
-    ['Engine', [['registry', 'Payee registry', Database], ['policy', 'Policy & weights', SlidersHorizontal]]],
-    ['Evidence', [['scenarios', 'Scenario suite', FlaskConical], ['roleplay', 'Role-play test', Users], ['audit', 'Audit log', ScrollText]]]
+    ['Engine', [['registry', 'Payee registry', Database], ['rings', 'Mule network', Network], ['policy', 'Policy & weights', SlidersHorizontal]]],
+    ['Evidence', [['scenarios', 'Scenario suite', FlaskConical], ['roleplay', 'Role-play test', Users], ['audit', 'Audit log', ScrollText]]],
+    ['Platform', [['integrations', 'Integrations & API', Plug], ['security', 'Security', ShieldCheck]]]
   ];
   return (
     <div className="ad">
@@ -48,7 +59,7 @@ export default function AdminApp() {
           <div key={sec} style={{ display: 'contents' }}>
             <div className="sec">{sec}</div>
             {items.map(([to, label, Icon, badge]) => (
-              <NavLink key={to} to={to}><Icon size={18} />{label}{badge ? <em>{badge}</em> : null}</NavLink>
+              <NavLink key={to} to={`/admin/${to}`}><Icon size={18} />{label}{badge ? <em>{badge}</em> : null}</NavLink>
             ))}
           </div>
         ))}
@@ -70,7 +81,10 @@ export default function AdminApp() {
           <Route path="scenarios" element={<Scenarios />} />
           <Route path="roleplay" element={<Roleplay />} />
           <Route path="audit" element={<Audit />} />
-          <Route path="*" element={<Navigate to="overview" replace />} />
+          <Route path="rings" element={<Rings />} />
+          <Route path="integrations" element={<Integrations />} />
+          <Route path="security" element={<Security />} />
+          <Route path="*" element={<Navigate to="/admin/overview" replace />} />
         </Routes>
       </main>
     </div>
@@ -83,16 +97,31 @@ function Login({ onDone }) {
   const [pw, setPw] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
   const refs = useRef([]);
-  const first = () => {
-    if (id.trim().toUpperCase() !== 'RISK-2291' || pw !== 'demo') { setErr('Use the demo staff ID RISK-2291 and password demo.'); return; }
+  // Password checked against a bcrypt hash; 5 wrong tries lock sign-in (30 s, then doubling).
+  const first = async (password = pw) => {
+    const g = gate('admin');
+    if (!g.ok) { setErr(`Too many attempts. Try again in ${Math.ceil(g.waitMs / 1000)} s.`); return; }
+    setBusy(true);
+    const ok = await checkAdminPassword(id, password);
+    setBusy(false);
+    if (!ok) { const a = fail('admin'); setErr(a.ok ? `Wrong staff ID or password. ${a.left} attempts left. (Demo: RISK-2291 / demo)` : `Too many attempts. Try again in ${Math.ceil(a.waitMs / 1000)} s.`); return; }
     setErr(''); setStep(1); setTimeout(() => refs.current[0]?.focus(), 50);
+  };
+  const second = (code) => {
+    const g = gate('admin');
+    if (!g.ok) { setErr(`Too many attempts. Try again in ${Math.ceil(g.waitMs / 1000)} s.`); return; }
+    if (checkMfa(code)) { succeed('admin'); setTimeout(onDone, 150); return; }
+    const a = fail('admin');
+    setErr(a.ok ? 'Code didn’t match. The demo code is 246810.' : `Too many attempts. Try again in ${Math.ceil(a.waitMs / 1000)} s.`);
+    setOtp(['', '', '', '', '', '']); refs.current[0]?.focus();
   };
   const setDigit = (i, v) => {
     const d = v.replace(/\D/g, '').slice(-1);
     const next = [...otp]; next[i] = d; setOtp(next);
     if (d && i < 5) refs.current[i + 1]?.focus();
-    if (next.join('').length === 6) { if (next.join('') === '246810') setTimeout(onDone, 150); else setErr('Code didn’t match. The demo code is 246810.'); }
+    if (next.join('').length === 6) second(next.join(''));
   };
   return (
     <div className="login-wrap">
@@ -104,8 +133,8 @@ function Login({ onDone }) {
             <div className="field"><label htmlFor="sid">Employee ID</label><input id="sid" className="input mono" value={id} onChange={(e) => setId(e.target.value)} autoComplete="username" /></div>
             <div className="field"><label htmlFor="spw">Password</label><input id="spw" className="input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" placeholder="demo" /></div>
             {err && <div className="error" role="alert">{err}</div>}
-            <button className="btn block" type="submit"><KeyRound size={17} />Continue</button>
-            <button className="btn ghost block" type="button" onClick={() => { setPw('demo'); setErr(''); setStep(1); }}>Use demo credentials</button>
+            <button className="btn block" type="submit" disabled={busy}><KeyRound size={17} />{busy ? 'Checking…' : 'Continue'}</button>
+            <button className="btn ghost block" type="button" disabled={busy} onClick={() => { setId('RISK-2291'); setPw('demo'); first('demo'); }}>Use demo credentials</button>
             <p className="help" style={{ margin: 0 }}>Demo: <span className="mono">RISK-2291</span> / <span className="mono">demo</span>, then code <span className="mono">246810</span>.</p>
           </form>
         ) : (
@@ -113,7 +142,7 @@ function Login({ onDone }) {
             <div><h1 className="h2">Two-step check</h1><p className="muted" style={{ margin: '6px 0 0' }}>Enter the 6-digit code from your authenticator app.</p></div>
             <div className="otp">{otp.map((d, i) => <input key={i} ref={(el) => (refs.current[i] = el)} className="input" inputMode="numeric" aria-label={`Digit ${i + 1}`} value={d} onChange={(e) => setDigit(i, e.target.value)} onKeyDown={(e) => e.key === 'Backspace' && !d && i > 0 && refs.current[i - 1]?.focus()} />)}</div>
             {err && <div className="error" role="alert">{err}</div>}
-            <button className="btn block" onClick={onDone}>Use demo code</button>
+            <button className="btn block" onClick={() => second('246810')}>Use demo code</button>
             <button className="link" onClick={() => setStep(0)}>Back</button>
           </div>
         )}

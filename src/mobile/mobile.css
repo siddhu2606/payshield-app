@@ -146,3 +146,11 @@
 .lock-card { display: flex; gap: 10px; align-items: flex-start; text-align: left; font-size: 13px; color: #d6e0f2; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .08); border-radius: 14px; padding: 11px 13px; max-width: 330px; }
 .lock-foot { display: grid; gap: 10px; }
 .lock-foot small { color: #8d9cba; }
+
+/* SMS inbox */
+.msg-banner { position: absolute; left: 10px; right: 10px; top: calc(10px + env(safe-area-inset-top, 0px)); z-index: 55; display: flex; gap: 8px; align-items: flex-start; padding: 10px 10px 10px 12px; border-radius: 16px; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line2); box-shadow: 0 14px 40px rgba(0,0,0,.45); backdrop-filter: blur(14px); animation: drop .35s cubic-bezier(.2,.9,.3,1.2); }
+@keyframes drop { from { transform: translateY(-120%); opacity: 0; } to { transform: none; opacity: 1; } }
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.bubble { background: var(--panel2); border: 1px solid var(--line2); border-radius: 18px 18px 18px 6px; padding: 12px 14px; font-size: 14.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.msg-link { all: unset; color: #7fb2ff; text-decoration: underline; cursor: pointer; overflow-wrap: anywhere; }
+.seg button svg { vertical-align: -2px; }

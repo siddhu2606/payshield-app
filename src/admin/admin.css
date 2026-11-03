@@ -89,3 +89,20 @@
   .weight { grid-template-columns: minmax(0, 1fr) 100px 40px; }
   .cmp { grid-template-columns: 110px 1fr 48px; }
 }
+
+/* Mule network, Integrations, Security */
+.panel-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.steps3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.step3 { position: relative; display: grid; gap: 4px; align-content: start; padding: 12px 14px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--line); }
+.step3 .mono { color: var(--accent-2); font-size: 12px; }
+.step3 .arrow { position: absolute; right: -16px; top: 50%; translate: 0 -50%; color: var(--dim); background: var(--panel); border-radius: 50%; z-index: 1; }
+.ring-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 12px; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.tight-list { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13.5px; color: var(--mute); }
+.tight-list b { color: var(--fg); font-weight: 600; }
+.conn { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.conn > div { display: grid; gap: 6px; align-content: start; padding: 14px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--line); }
+.code { margin: 0; padding: 12px 14px; border-radius: 10px; background: #05070c; border: 1px solid var(--line); color: #cfe0ff; font: 12px/1.5 var(--mono); overflow: auto; max-height: 340px; white-space: pre; }
+.check-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 12px 0; border-top: 1px solid var(--line); }
+.check-row:first-child { border-top: 0; }
+@media (max-width: 900px) { .steps3, .grid2 { grid-template-columns: 1fr; } .step3 .arrow { display: none; } }

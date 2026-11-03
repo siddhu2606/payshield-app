@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Check, X, Clock, PhoneCall, UserCheck, ShieldAlert, Search, Sparkles, Hourglass, ShieldCheck, Building2, User, Landmark, HelpCircle, CircleSlash } from 'lucide-react';
+import { Link2, Check, X, Clock, PhoneCall, UserCheck, ShieldAlert, Search, Sparkles, Hourglass, ShieldCheck, Building2, User, Landmark, HelpCircle, CircleSlash } from 'lucide-react';
 import { useDb, previewPayment, createPayment, decide, requestTrustedContact, pressureHold } from '../../core/store.js';
 import { QUESTIONS, PURPOSES, TIER } from '../../core/risk.js';
 import { Top } from '../MobileApp.jsx';
@@ -33,10 +33,12 @@ export default function PayFlow({ user }) {
   const [purpose, setPurpose] = useState(null);
   const [answers, setAnswers] = useState({});
   const [txId, setTxId] = useState(null);
+  const [source, setSource] = useState(null); // { msgId } when opened from a message link
 
   useEffect(() => {
     if (!loc.state?.upi) return;
     setUpi(loc.state.upi); setTxId(null); setPurpose(null); setAnswers({}); setErr('');
+    setSource(loc.state.msgId ? { msgId: loc.state.msgId } : null);
     if (loc.state.amount) setAmount(String(loc.state.amount));
     if (loc.state.note) setNote(loc.state.note);
     setStep('amount');
@@ -46,15 +48,16 @@ export default function PayFlow({ user }) {
   const tx = txId ? db.transactions.find((t) => t.id === txId) : null;
   const amt = Number(String(amount).replace(/[^\d]/g, '')) || 0;
   const payeeName = saved.find((b) => b.upi === upi)?.name || db.registry[upi]?.name;
-  const reset = () => { setStep('payee'); setUpi(''); setAmount(''); setNote(''); setPurpose(null); setAnswers({}); setTxId(null); setPreview(null); setErr(''); };
+  const msg = source && (db.messages || []).find((m) => m.id === source.msgId);
+  const reset = () => { setSource(null); setStep('payee'); setUpi(''); setAmount(''); setNote(''); setPurpose(null); setAnswers({}); setTxId(null); setPreview(null); setErr(''); };
 
   const goReview = () => {
-    const p = previewPayment(user.id, upi.trim().toLowerCase(), amt);
+    const p = previewPayment(user.id, upi.trim().toLowerCase(), amt, source);
     if (p.error) { setErr(p.error); return; }
     setErr(''); setPreview(p); setStep('review');
   };
   const submit = (skipped) => {
-    const t = createPayment({ userId: user.id, upi: upi.trim().toLowerCase(), amount: amt, note, purpose, screening: skipped ? null : answers, skipped });
+    const t = createPayment({ userId: user.id, upi: upi.trim().toLowerCase(), amount: amt, note, purpose, screening: skipped ? null : answers, skipped, source });
     setTxId(t.id);
     setStep(t.status === 'COMPLETED' ? 'done' : 'risk');
   };
@@ -106,6 +109,12 @@ export default function PayFlow({ user }) {
           </>
         )}
 
+        {msg && ['amount', 'review'].includes(step) && (
+          <div className="tier-banner tb-HIGH" style={{ gap: 4 }}>
+            <span className="row" style={{ gap: 6 }}><Link2 size={16} color="var(--t-high)" /><b style={{ fontSize: 14.5 }}>Opened from a link in a message</b></span>
+            <p style={{ fontSize: 13 }}>From {msg.from}. You didn’t type these details. PayShield will check this payment before any money moves.</p>
+          </div>
+        )}
         {step === 'amount' && (
           <>
             <div className="card" style={{ justifyItems: 'center', textAlign: 'center', gap: 6, padding: '22px 16px' }}>
@@ -137,7 +146,7 @@ export default function PayFlow({ user }) {
               <div className="tier-banner tb-MEDIUM" style={{ gap: 4 }}>
                 <b style={{ fontSize: 15 }}>One quick check before you pay</b>
                 <p className="muted" style={{ color: 'var(--mute)' }}>
-                  {[preview.ctx.new_beneficiary && 'first payment to this account', preview.ctx.amount_unusual && `about ${Math.round(preview.ctx.amountRatio)}× your usual amount`, preview.ctx.rapid_transactions && 'several payments in a short time'].filter(Boolean).join(', ').replace(/^./, (c) => c.toUpperCase())}.
+                  {[preview.ctx.from_message && 'opened from a link in a message', preview.ctx.active_call && (preview.ctx.callKind === 'phone' || preview.ctx.callKind === 'internet' ? 'a call is in progress on this phone' : 'you’re on a call'), preview.ctx.screen_shared && 'your screen is being shared', preview.ctx.new_beneficiary && 'first payment to this account', preview.ctx.amount_unusual && `about ${Math.round(preview.ctx.amountRatio)}× your usual amount`, preview.ctx.rapid_transactions && 'several payments in a short time'].filter(Boolean).join(', ').replace(/^./, (c) => c.toUpperCase())}.
                 </p>
               </div>
             ) : (

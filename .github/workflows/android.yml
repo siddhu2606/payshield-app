@@ -28,14 +28,33 @@ jobs:
         run: npx cap add android
       - name: App icons and splash
         run: node scripts/icons.mjs
+      - name: Signing key
+        # Uses the project key from repository secrets when present; otherwise a fresh key for this build.
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          KS="$RUNNER_TEMP/payshield.p12"
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$KS"; PW="$KS_PW"
+          else
+            PW=$(openssl rand -hex 16)
+            keytool -genkeypair -storetype PKCS12 -keystore "$KS" -alias payshield -keyalg RSA -keysize 3072 -validity 10000               -storepass "$PW" -keypass "$PW" -dname "CN=PayShield, O=Team VSlash, C=IN"
+          fi
+          echo "::add-mask::$PW"
+          echo "PS_KEYSTORE=$KS" >> "$GITHUB_ENV"
+          echo "PS_KEYSTORE_PASSWORD=$PW" >> "$GITHUB_ENV"
+          echo "PS_KEY_ALIAS=payshield" >> "$GITHUB_ENV"
+      - name: Harden the Android project (release signing, no backup, no cleartext, payment links)
+        run: node scripts/android-setup.mjs
       - run: npx cap sync android
-      - name: Build APK
+      - name: Build release APK (not debuggable)
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon
       - name: Name the APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk PayShield.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk PayShield.apk
       - uses: actions/upload-artifact@v4
         with:
           name: PayShield-apk
@@ -49,5 +68,6 @@ jobs:
           files: PayShield.apk
           body: |
             PayShield prototype for FIN-11 (VK'26, Team V/Slash).
-            Install: download PayShield.apk on an Android phone, open it, and allow "install unknown apps" for your browser when asked.
+            Install: download PayShield.apk on an Android phone, open it, and allow "install unknown apps" for your browser when asked. If an older PayShield is installed, uninstall it first.
+            New: scam SMS with payment links, real call and screen-share detection, phone voice for the caller, mule-ring linking, encrypted sync.
             Demo passcode 1234. Simulated payments, fictional people, synthetic data.

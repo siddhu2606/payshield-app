@@ -13,7 +13,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  secrets-scan:
+    name: Scan git history for leaked secrets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   deploy:
+    needs: secrets-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,8 +35,16 @@ jobs:
         with:
           node-version: 20
       - run: npm install --no-audit --no-fund
+      - name: No known vulnerabilities in shipped packages
+        run: npm audit --omit=dev --audit-level=moderate
       - run: npm test
       - run: npm run build
+      - name: Built site contains no keys or tokens
+        run: |
+          if grep -rEo "AC[0-9a-f]{32}|SK[0-9a-f]{32}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|-----BEGIN [A-Z ]*PRIVATE KEY" dist; then
+            echo "Secret-like string found in the build"; exit 1
+          fi
+          echo "clean"
       - name: Publish to gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
         with:

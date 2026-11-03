@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { ShieldCheck, UserCheck, PhoneCall, LogOut, RotateCcw, Hand, Info } from 'lucide-react';
+import { ShieldCheck, UserCheck, PhoneCall, LogOut, RotateCcw, Hand, Info, ScanSearch, Landmark, Plus, Smartphone, Check } from 'lucide-react';
+import { useDeviceCall, askPhonePermission, isNativeApp } from '../../core/device.js';
+import { ScanCard } from '../MessageLayer.jsx';
 import { useDb, updateSettings, setTrustedContact, resetDemo } from '../../core/store.js';
 import { Top } from '../MobileApp.jsx';
 import { initials, Sheet, useToast, SyncBadge } from '../../ui.jsx';
@@ -9,6 +11,10 @@ export default function Safety({ user, signOut }) {
   const toast = useToast();
   const [pick, setPick] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [aa, setAa] = useState(false);
+  const dev = useDeviceCall();
+  const native = isNativeApp();
   const s = user.settings || {};
   const contact = user.trustedContactId && db.users[user.trustedContactId];
   const guardians = Object.values(db.users).filter((u) => u.role === 'guardian');
@@ -32,6 +38,37 @@ export default function Safety({ user, signOut }) {
           <label className="toggle-row"><span>Discreet pressure button<small>Press and hold the shield during a payment to pause it quietly and alert your contact</small></span><input type="checkbox" className="switch" checked={s.pressureButton !== false} onChange={(e) => updateSettings(user.id, { pressureButton: e.target.checked })} /></label>
         </div>
 
+        <div className="card">
+          <div className="spread"><span className="eyebrow">Real call detection</span>{native ? <span className={`pill fill ${dev.onCall ? 'c-high' : 'c-low'}`}>{dev.onCall ? (dev.kind === 'internet' ? 'On an internet call' : 'On a call') : 'No call'}</span> : <span className="pill c-mute">Android app</span>}</div>
+          {native ? (
+            <>
+              <small className="muted">PayShield checks only <b>whether</b> a call is in progress (phone or WhatsApp-style) and whether the screen is being shared. Never the number, the audio or what is said.</small>
+              <div className="facts">
+                <div className="fact"><small>Phone or internet call</small><b>{dev.onCall ? 'In progress' : 'None'}</b></div>
+                <div className="fact"><small>Screen sharing</small><b style={{ color: dev.screenShared ? 'var(--t-crit)' : undefined }}>{dev.screenShared ? 'Detected' : 'None'}</b></div>
+              </div>
+              {!dev.phonePermission && <button className="btn soft block" onClick={askPhonePermission}><Smartphone size={16} />Also detect SIM calls (allow phone state)</button>}
+              {dev.phonePermission && <small className="row c-low" style={{ gap: 6 }}><Check size={14} />SIM call state allowed</small>}
+            </>
+          ) : (
+            <small className="muted">The Android app detects a real phone or WhatsApp call, and screen sharing, while you pay. In a browser this isn’t possible, so the role-play caller phone simulates the call.</small>
+          )}
+        </div>
+
+        <div className="card">
+          <span className="row" style={{ gap: 6 }}><ScanSearch size={17} color="var(--accent-2)" /><span className="eyebrow">Check a message</span></span>
+          <small className="muted">Got an SMS or WhatsApp asking you to pay? Paste it here. It’s checked on this phone and not stored.</small>
+          <textarea className="input" rows={3} maxLength={600} placeholder="Paste the message" value={msg} onChange={(e) => setMsg(e.target.value)} style={{ resize: 'vertical', minHeight: 76 }} />
+          {msg.trim().length > 8 && <ScanCard text={msg} compact />}
+        </div>
+
+        <div className="card">
+          <div className="spread"><span className="eyebrow">Linked bank accounts</span><span className="pill c-mute">simulated</span></div>
+          <div className="row"><span className="avatar"><Landmark size={17} /></span><div className="grow"><b>Savings account ••4210</b><br /><small className="muted">Your bank · linked via UPI · used for the balance and history</small></div><span className="pill fill c-low">Primary</span></div>
+          <button className="btn soft block" onClick={() => setAa(true)}><Plus size={16} />Link another bank (Account Aggregator)</button>
+          <small className="help" style={{ margin: 0 }}>PayShield is a safety layer, not a wallet: it works on top of your existing bank and UPI apps.</small>
+        </div>
+
         <div className="card flat">
           <span className="row"><Hand size={17} color="var(--accent-2)" /><b>How the pressure button works</b></span>
           <small className="muted">If a caller is watching or listening, press and hold the shield icon at the top of the payment screen for 1.5 seconds. The app shows a neutral “routine security check” message, holds the payment, and alerts {contact ? contact.name.split(' ')[0] : 'your trusted contact'}.</small>
@@ -39,7 +76,7 @@ export default function Safety({ user, signOut }) {
 
         <div className="card">
           <span className="eyebrow">What PayShield never does</span>
-          {['Listen to your calls or read your messages', 'Look inside other apps', 'Ask for your UPI PIN, OTP or password', 'Call you a criminal or block a payment without telling you why'].map((x) => (
+          {['Listen to your calls, see who is calling, or read your SMS inbox', 'Look inside other apps', 'Ask for your UPI PIN, OTP or password', 'Call you a criminal or block a payment without telling you why'].map((x) => (
             <div key={x} className="row" style={{ fontSize: 13.5 }}><ShieldCheck size={16} color="var(--t-low)" style={{ flex: 'none' }} />{x}</div>
           ))}
         </div>
@@ -67,6 +104,16 @@ export default function Safety({ user, signOut }) {
             ))}
           </div>
           {contact && <button className="btn ghost block" onClick={() => { setTrustedContact(user.id, null); setPick(false); }}>Remove trusted contact</button>}
+        </Sheet>
+      )}
+      {aa && (
+        <Sheet onClose={() => setAa(false)} label="Link a bank">
+          <b className="h3">Link a bank with your consent</b>
+          <p className="muted" style={{ margin: 0 }}>In a real rollout this uses RBI’s Account Aggregator framework: you approve a time-limited consent in your bank’s app, and PayShield receives only your payment history, to learn what’s normal for you.</p>
+          {['Choose your bank from the AA directory', 'Approve the consent: payment history, read-only, 12 months', 'PayShield builds your normal pattern on the phone', 'Revoke any time from the AA app'].map((x, i) => (
+            <div key={x} className="row" style={{ fontSize: 14 }}><span className="mono dim">{String(i + 1).padStart(2, '0')}</span>{x}</div>
+          ))}
+          <button className="btn block" onClick={() => { setAa(false); toast('Demo: in production this opens the Account Aggregator consent screen'); }}>Continue (demo)</button>
         </Sheet>
       )}
       {confirmReset && (

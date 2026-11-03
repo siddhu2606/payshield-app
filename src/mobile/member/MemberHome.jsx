@@ -1,5 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Send, QrCode, ShieldCheck, Clock, ChevronRight, AlertTriangle, BadgeCheck, Hourglass } from 'lucide-react';
+import { Send, QrCode, ShieldCheck, Clock, ChevronRight, AlertTriangle, BadgeCheck, Hourglass, PhoneCall, MonitorSmartphone } from 'lucide-react';
+import { InboxButton } from '../MessageLayer.jsx';
+import { useDeviceCall } from '../../core/device.js';
 import { useDb, historyOf } from '../../core/store.js';
 import { Top, Bellbtn } from '../MobileApp.jsx';
 import { inr, initials, ago, MemberStatus } from '../../ui.jsx';
@@ -16,11 +18,26 @@ export default function MemberHome({ user }) {
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const contact = user.trustedContactId && db.users[user.trustedContactId];
+  const dev = useDeviceCall();
+  const realCall = user.settings?.callState !== false && dev.supported && dev.onCall;
+  const shared = user.settings?.callState !== false && dev.supported && dev.screenShared;
 
   return (
     <>
-      <Top avatar={<span className="avatar">{initials(user.name)}</span>} title={user.name.split(' ')[0]} sub={greet} right={<Bellbtn userId={user.id} />} />
+      <Top avatar={<span className="avatar">{initials(user.name)}</span>} title={user.name.split(' ')[0]} sub={greet} right={<span className="row" style={{ gap: 6 }}><InboxButton userId={user.id} /><Bellbtn userId={user.id} /></span>} />
       <div className="m-body">
+        {realCall && (
+          <div className="tier-banner tb-HIGH" role="status">
+            <span className="row"><PhoneCall size={18} color="var(--t-high)" /><b style={{ fontSize: 15.5 }}>You’re on a {dev.kind === 'internet' ? 'WhatsApp or internet' : 'phone'} call</b></span>
+            <p>Detected on this phone by PayShield. If the caller is asking you to pay, verify, or install an app, hang up first. Police and banks never ask for money on a call.</p>
+          </div>
+        )}
+        {shared && (
+          <div className="tier-banner tb-CRITICAL" role="status">
+            <span className="row"><MonitorSmartphone size={18} color="var(--t-crit)" /><b style={{ fontSize: 15.5 }}>Your screen is being shared</b></span>
+            <p>Someone else may be able to see this phone. Stop screen sharing before you pay or enter any PIN.</p>
+          </div>
+        )}
         {user.kyc !== 'verified' && (
           <div className="tier-banner tb-MEDIUM">
             <span className="row"><Hourglass size={18} color="var(--t-med)" /><b style={{ fontSize: 16 }}>KYC under review</b></span>

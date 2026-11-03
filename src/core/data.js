@@ -1,5 +1,6 @@
 // Synthetic demo data. Every person, account and UPI ID here is fictional (handles end in "demo").
 import { contextSignals, scoreSignals, DEFAULT_POLICY } from './risk.js';
+import { DEMO_PIN_HASH } from './auth.js';
 
 const DAY = 864e5;
 const MIN = 60e3;
@@ -23,12 +24,16 @@ export const REGISTRY = [
   { upi: 'school.canteen@okdemo', name: 'School Canteen', type: 'business', ageDays: 1300, senders24h: 96, verified: true },
   { upi: 'bookworm.store@okdemo', name: 'Bookworm Store', type: 'business', ageDays: 900, senders24h: 18, verified: true },
   { upi: 'annapurna.caterers@okdemo', name: 'Annapurna Caterers', type: 'individual', ageDays: 700, senders24h: 2 },
-  // Accounts that look like mule accounts in this synthetic world
-  { upi: 'rajesh.k4471@ybldemo', name: 'Rajesh Kumar', type: 'individual', ageDays: 2, senders24h: 14 },
-  { upi: 'clearance.desk@pnbdemo', name: 'Mohd. Arif', type: 'individual', ageDays: 9, senders24h: 22 },
-  { upi: 'tradeguru.vip@icicidemo', name: 'Sanjay Verma', type: 'individual', ageDays: 5, senders24h: 31 },
-  { upi: 'kyc.update.help@axldemo', name: 'Pooja Singh', type: 'individual', ageDays: 3, senders24h: 18 },
-  { upi: 'gamecoins.topup@okdemo', name: 'Aman Gupta', type: 'individual', ageDays: 6, senders24h: 27 }
+  // Accounts that look like mule accounts in this synthetic world. `device` and `phone` are the footprint a bank
+  // sees when an account is opened or used (device ID, registered mobile). Scammers swap accounts every few
+  // payments, but the footprint repeats, so a brand-new account can be linked to one already reported.
+  { upi: 'rajesh.k4471@ybldemo', name: 'Rajesh Kumar', type: 'individual', ageDays: 2, senders24h: 14, device: 'DEV-7F3A', phone: '+91 70•• ••342' },
+  { upi: 'clearance.desk@pnbdemo', name: 'Mohd. Arif', type: 'individual', ageDays: 9, senders24h: 22, device: 'DEV-7F3A', phone: '+91 88•• ••019', reportedSeed: true },
+  { upi: 'kyc.update.help@axldemo', name: 'Pooja Singh', type: 'individual', ageDays: 3, senders24h: 18, device: 'DEV-91BC', phone: '+91 70•• ••342' },
+  { upi: 'rk.enterprises22@ybldemo', name: 'R K Enterprises', type: 'individual', ageDays: 1, senders24h: 3, device: 'DEV-7F3A', phone: '+91 70•• ••342' },
+  { upi: 'tradeguru.vip@icicidemo', name: 'Sanjay Verma', type: 'individual', ageDays: 5, senders24h: 31, device: 'DEV-22C9', phone: '+91 96•• ••871' },
+  { upi: 'gamecoins.topup@okdemo', name: 'Aman Gupta', type: 'individual', ageDays: 6, senders24h: 27, device: 'DEV-22C9', phone: '+91 62•• ••531', reportedSeed: true },
+  { upi: 'vip.signals.desk@okdemo', name: 'Neeraj Pal', type: 'individual', ageDays: 2, senders24h: 4, device: 'DEV-5D10', phone: '+91 62•• ••531' }
 ];
 
 export const PERSONAS = {
@@ -90,21 +95,62 @@ export const OTHER_MEMBERS = {
   u_divya: { name: 'Divya Nair', age: 23 }
 };
 
+/** Accounts that share a device or registered mobile with this one. */
+export function linkedAccounts(registry, upi) {
+  const r = registry[upi];
+  if (!r || (!r.device && !r.phone)) return [];
+  return Object.values(registry).filter((x) => x.upi !== upi && ((r.device && x.device === r.device) || (r.phone && x.phone === r.phone)))
+    .map((x) => ({ upi: x.upi, name: x.name, reported: !!x.reported, frozen: !!x.frozen, via: [r.device && x.device === r.device && 'device', r.phone && x.phone === r.phone && 'phone'].filter(Boolean) }));
+}
+
 export function factsFor(registry, upi) {
   const r = registry[upi];
   if (!r) return { type: 'unknown' };
-  return { type: r.type, ageDays: r.ageDays, senders24h: r.senders24h, reported: !!r.reported, verified: !!r.verified, name: r.name };
+  const links = linkedAccounts(registry, upi).filter((x) => x.reported);
+  const via = new Set(links.flatMap((x) => x.via));
+  return {
+    type: r.type, ageDays: r.ageDays, senders24h: r.senders24h, reported: !!r.reported, verified: !!r.verified, name: r.name, frozen: !!r.frozen,
+    linkedReported: links.map((x) => x.upi),
+    linkedVia: via.size === 2 ? 'a device and a phone number' : via.has('device') ? 'a device' : via.has('phone') ? 'a registered phone number' : null
+  };
+}
+
+/** Mule rings: groups of accounts connected through shared devices or phone numbers. */
+export function muleRings(registry) {
+  const seen = new Set();
+  const rings = [];
+  Object.values(registry).forEach((r) => {
+    if (seen.has(r.upi) || (!r.device && !r.phone)) return;
+    const stack = [r.upi];
+    const members = [];
+    while (stack.length) {
+      const u = stack.pop();
+      if (seen.has(u)) continue;
+      seen.add(u); members.push(registry[u]);
+      linkedAccounts(registry, u).forEach((x) => { if (!seen.has(x.upi)) stack.push(x.upi); });
+    }
+    if (members.length > 1) rings.push(members);
+  });
+  return rings.map((m, i) => ({
+    id: `RING-${String.fromCharCode(65 + i)}`,
+    members: m,
+    devices: [...new Set(m.map((x) => x.device).filter(Boolean))],
+    phones: [...new Set(m.map((x) => x.phone).filter(Boolean))],
+    senders24h: m.reduce((a, x) => a + (x.senders24h || 0), 0),
+    reported: m.filter((x) => x.reported).length,
+    frozen: m.filter((x) => x.frozen).length
+  }));
 }
 
 export function createSeed(now = Date.now()) {
   const r = rng(26);
-  const registry = Object.fromEntries(REGISTRY.map((x) => [x.upi, { ...x, reported: false }]));
+  const registry = Object.fromEntries(REGISTRY.map(({ reportedSeed, ...x }) => [x.upi, { ...x, reported: !!reportedSeed }]));
   const users = {
-    u_aarav: { id: 'u_aarav', role: 'member', name: 'Aarav Mehta', mobile: '+91 98••• •4210', balance: 348250, kyc: 'verified', trustedContactId: 'g_priya', settings: { pauseHighRisk: true, pressureButton: true, consentTrusted: true, callState: true } },
-    c_anaya: { id: 'c_anaya', role: 'child', name: 'Anaya Mehta', age: 14, balance: 1340, guardianId: 'g_priya', dailyLimit: 500, monthlyAllowance: 2000, approveAll: false },
-    g_priya: { id: 'g_priya', role: 'guardian', name: 'Priya Mehta', mobile: '+91 98••• •7733', wards: ['u_aarav', 'c_anaya'] },
+    u_aarav: { id: 'u_aarav', role: 'member', name: 'Aarav Mehta', mobile: '+91 98••• •4210', balance: 348250, kyc: 'verified', pinHash: DEMO_PIN_HASH, trustedContactId: 'g_priya', settings: { pauseHighRisk: true, pressureButton: true, consentTrusted: true, callState: true } },
+    c_anaya: { id: 'c_anaya', role: 'child', name: 'Anaya Mehta', age: 14, pinHash: DEMO_PIN_HASH, balance: 1340, guardianId: 'g_priya', dailyLimit: 500, monthlyAllowance: 2000, approveAll: false },
+    g_priya: { id: 'g_priya', role: 'guardian', name: 'Priya Mehta', mobile: '+91 98••• •7733', pinHash: DEMO_PIN_HASH, wards: ['u_aarav', 'c_anaya'] },
     a_meera: { id: 'a_meera', role: 'admin', name: 'Meera Iyer', staffId: 'RISK-2291' },
-    x_caller: { id: 'x_caller', role: 'caller', name: 'Scam caller (simulation)' },
+    x_caller: { id: 'x_caller', role: 'caller', name: 'Scam caller (simulation)', pinHash: DEMO_PIN_HASH },
     u_new: null
   };
   delete users.u_new;
@@ -143,7 +189,7 @@ export function createSeed(now = Date.now()) {
   });
 
   return {
-    version: 4,
+    version: 5,
     createdAt: now,
     policy: JSON.parse(JSON.stringify(DEFAULT_POLICY)),
     users,
@@ -161,6 +207,8 @@ export function createSeed(now = Date.now()) {
     ],
     notifications: [],
     calls: [],
+    messages: [],
+    cases: [],
     roleplay: [],
     audit: [{ t: now, actor: 'system', action: 'Demo data created', detail: 'Synthetic users, payees and history loaded' }]
   };

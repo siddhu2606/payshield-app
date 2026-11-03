@@ -13,7 +13,8 @@ export default function ChildPay({ user }) {
   const [note, setNote] = useState('');
   const [res, setRes] = useState(null);
   const loc = useLocation();
-  useEffect(() => { if (loc.state?.upi) { setUpi(loc.state.upi); setAmount(String(loc.state.amount || '')); setNote(loc.state.note || ''); setRes(null); } }, [loc.state]);
+  const [source, setSource] = useState(null);
+  useEffect(() => { if (loc.state?.upi) { setUpi(loc.state.upi); setAmount(String(loc.state.amount || '')); setNote(loc.state.note || ''); setRes(null); setSource(loc.state.msgId ? { msgId: loc.state.msgId } : null); } }, [loc.state]);
   const [err, setErr] = useState('');
   const saved = db.beneficiaries.filter((b) => b.userId === user.id);
   const amt = Number(amount) || 0;
@@ -24,7 +25,7 @@ export default function ChildPay({ user }) {
   const risky = facts && !isSaved && facts.type === 'individual' && facts.ageDays < 30;
 
   const pay = () => {
-    const r = childPay({ childId: user.id, upi: upi.trim().toLowerCase(), amount: amt, note: note || 'Payment' });
+    const r = childPay({ childId: user.id, upi: upi.trim().toLowerCase(), amount: amt, note: note || 'Payment', source });
     if (r.error) setErr(r.error); else { setErr(''); setRes(r); }
   };
 
