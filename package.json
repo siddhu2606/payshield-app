@@ -31,7 +31,7 @@
     "payshield-call-state": "file:plugins/call-state"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.1.2",
+    "@capacitor/cli": "^8.6.0",
     "@vitejs/plugin-react": "^4.3.1",
     "sharp": "^0.35.5",
     "vite": "^6.4.5"
