@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Send, QrCode, ShieldCheck, Clock, ChevronRight, AlertTriangle, BadgeCheck, Hourglass, PhoneCall, MonitorSmartphone } from 'lucide-react';
 import { InboxButton } from '../MessageLayer.jsx';
 import { useDeviceCall } from '../../core/device.js';
+import { tr, langOf } from '../../core/i18n.js';
 import { useDb, historyOf } from '../../core/store.js';
 import { Top, Bellbtn } from '../MobileApp.jsx';
 import { inr, initials, ago, MemberStatus } from '../../ui.jsx';
@@ -21,6 +22,7 @@ export default function MemberHome({ user }) {
   const dev = useDeviceCall();
   const realCall = user.settings?.callState !== false && dev.supported && dev.onCall;
   const shared = user.settings?.callState !== false && dev.supported && dev.screenShared;
+  const L = tr(langOf(user));
 
   return (
     <>
@@ -28,14 +30,14 @@ export default function MemberHome({ user }) {
       <div className="m-body">
         {realCall && (
           <div className="tier-banner tb-HIGH" role="status">
-            <span className="row"><PhoneCall size={18} color="var(--t-high)" /><b style={{ fontSize: 15.5 }}>You’re on a {dev.kind === 'internet' ? 'WhatsApp or internet' : 'phone'} call</b></span>
-            <p>Detected on this phone by PayShield. If the caller is asking you to pay, verify, or install an app, hang up first. Police and banks never ask for money on a call.</p>
+            <span className="row"><PhoneCall size={18} color="var(--t-high)" /><b style={{ fontSize: 15.5 }}>{L.callTitle(dev.kind)}</b></span>
+            <p>{L.callBody}</p>
           </div>
         )}
         {shared && (
           <div className="tier-banner tb-CRITICAL" role="status">
-            <span className="row"><MonitorSmartphone size={18} color="var(--t-crit)" /><b style={{ fontSize: 15.5 }}>Your screen is being shared</b></span>
-            <p>Someone else may be able to see this phone. Stop screen sharing before you pay or enter any PIN.</p>
+            <span className="row"><MonitorSmartphone size={18} color="var(--t-crit)" /><b style={{ fontSize: 15.5 }}>{L.shareTitle}</b></span>
+            <p>{L.shareBody}</p>
           </div>
         )}
         {user.kyc !== 'verified' && (

@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { Lock, Delete, PhoneCall, ShieldCheck } from 'lucide-react';
 import { useDb, unlockPhone } from '../core/store.js';
+import { checkPin, gate, fail, succeed } from '../core/auth.js';
+import { tr, langOf } from '../core/i18n.js';
 
 export default function LockScreen({ user }) {
   const db = useDb();
@@ -16,14 +18,21 @@ export default function LockScreen({ user }) {
   const guardian = db.users[lock.by];
   const left = Math.max(0, Math.ceil((lock.until - now) / 1000));
   const d = new Date(now);
+  const L = tr(langOf(user));
+  // Same bcrypt check and lock-out as sign-in, so the cool-off can't be brute-forced.
+  const verify = async (pin) => {
+    const g = gate(`pin.${user.id}`);
+    if (!g.ok) { setErr(`Too many tries. Wait ${Math.ceil(g.waitMs / 1000)} s.`); setCode(''); return; }
+    if (await checkPin(pin, user.pinHash)) { succeed(`pin.${user.id}`); unlockPhone(user.id, user.id, 'passcode'); return; }
+    const a = fail(`pin.${user.id}`);
+    setErr(a.ok ? 'Wrong passcode' : `Too many tries. Wait ${Math.ceil(a.waitMs / 1000)} s.`);
+    setTimeout(() => setCode(''), 300);
+  };
   const press = (k) => {
     setErr('');
     const next = k === 'del' ? code.slice(0, -1) : (code + k).slice(0, 4);
     setCode(next);
-    if (next.length === 4) {
-      if (next === '1234') setTimeout(() => unlockPhone(user.id, user.id, 'passcode'), 150);
-      else { setErr('Wrong passcode'); setTimeout(() => setCode(''), 300); }
-    }
+    if (next.length === 4) verify(next);
   };
 
   return (
@@ -36,11 +45,11 @@ export default function LockScreen({ user }) {
       {!pad ? (
         <div className="lock-body">
           <span className="lock-badge"><ShieldCheck size={30} /><Lock size={16} className="lock-mini" /></span>
-          <b className="h2" style={{ fontSize: 24 }}>Phone locked by PayShield</b>
-          <p>{lock.reason}. The call was ended. Payments, messages and account details are hidden until this phone is unlocked.</p>
+          <b className="h2" style={{ fontSize: 24 }}>{L.lockTitle}</b>
+          <p>{L.lockBody(lock.reason)}</p>
           <div className="lock-card">
             <PhoneCall size={17} style={{ flex: 'none' }} />
-            <span>If someone calls back asking for money, don’t answer. Report it on <b className="mono">1930</b>.</span>
+            <span>{L.lockCallback.split('1930')[0]}<b className="mono">1930</b>{L.lockCallback.split('1930')[1]}</span>
           </div>
         </div>
       ) : (

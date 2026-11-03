@@ -10,28 +10,32 @@ async function nativeTts() {
   return tts;
 }
 
-function webVoice() {
+function webVoice(lang = 'en-IN') {
   try {
     const vs = speechSynthesis.getVoices();
-    return vs.find((v) => /en[-_]IN/i.test(v.lang)) || vs.find((v) => /hi[-_]IN/i.test(v.lang) && /english/i.test(v.name)) || vs.find((v) => /^en/i.test(v.lang)) || null;
+    const base = lang.slice(0, 2);
+    if (base === 'en') return vs.find((v) => /en[-_]IN/i.test(v.lang)) || vs.find((v) => /hi[-_]IN/i.test(v.lang) && /english/i.test(v.name)) || vs.find((v) => /^en/i.test(v.lang)) || null;
+    // Marathi voices are rare on desktops; a Hindi voice reads Devanagari well enough as a fallback.
+    return vs.find((v) => v.lang.replace('_', '-').toLowerCase() === lang.toLowerCase()) || vs.find((v) => v.lang.toLowerCase().startsWith(base)) || vs.find((v) => /^hi/i.test(v.lang)) || null;
   } catch { return null; }
 }
 
-export async function speak(text, { rate = 1, pitch = 0.85 } = {}) {
+export async function speak(text, { rate = 1, pitch = 0.85, lang = 'en-IN' } = {}) {
   if (!text) return;
   const t = await nativeTts();
   if (t) {
     try { await t.stop(); } catch { /* nothing playing */ }
-    try { await t.speak({ text, lang: 'en-IN', rate, pitch, volume: 1, category: 'playback' }); return; } catch {
-      try { await t.speak({ text, lang: 'en-US', rate, pitch, volume: 1, category: 'playback' }); return; } catch { /* fall through */ }
+    const tries = lang.startsWith('mr') ? [lang, 'hi-IN'] : lang.startsWith('hi') ? [lang] : [lang, 'en-US'];
+    for (const l of tries) {
+      try { await t.speak({ text, lang: l, rate, pitch, volume: 1, category: 'playback' }); return; } catch { /* try the next language */ }
     }
   }
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   try {
     const u = new SpeechSynthesisUtterance(text);
-    const v = webVoice();
+    const v = webVoice(lang);
     if (v) u.voice = v;
-    u.lang = v?.lang || 'en-IN'; u.rate = rate; u.pitch = pitch; u.volume = 1;
+    u.lang = v?.lang || lang; u.rate = rate; u.pitch = pitch; u.volume = 1;
     speechSynthesis.cancel();
     speechSynthesis.resume();
     speechSynthesis.speak(u);

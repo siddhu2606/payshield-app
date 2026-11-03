@@ -72,6 +72,27 @@ if (process.argv.includes('--check')) {
   process.exit(0);
 }
 
+// --verify: ask Twilio whether the credentials work and the From number belongs to the account. Read-only, sends nothing.
+if (process.argv.includes('--verify')) {
+  const p = configProblems();
+  if (p.length) { console.log(`Fix .env first:\n - ${p.join('\n - ')}`); process.exit(1); }
+  const auth = { Authorization: `Basic ${Buffer.from(`${E.TWILIO_ACCOUNT_SID}:${E.TWILIO_AUTH_TOKEN}`).toString('base64')}` };
+  const base = `https://api.twilio.com/2010-04-01/Accounts/${E.TWILIO_ACCOUNT_SID}`;
+  const acc = await fetch(`${base}.json`, { headers: auth });
+  if (!acc.ok) { console.log(`Twilio rejected the credentials (HTTP ${acc.status}). Check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN.`); process.exit(1); }
+  const a = await acc.json();
+  console.log(`Credentials OK · account "${a.friendly_name}" · status ${a.status} · type ${a.type}`);
+  const nums = await fetch(`${base}/IncomingPhoneNumbers.json?PhoneNumber=${encodeURIComponent(E.TWILIO_FROM)}`, { headers: auth }).then((r) => r.json()).catch(() => ({}));
+  console.log(nums.incoming_phone_numbers?.length ? `From number ${E.TWILIO_FROM} belongs to this account · SMS ${nums.incoming_phone_numbers[0].capabilities?.sms ? 'enabled' : 'NOT enabled'}` : `From number ${E.TWILIO_FROM} was not found on this account`);
+  if (a.type === 'Trial') {
+    const ver = await fetch(`${base}/OutgoingCallerIds.json`, { headers: auth }).then((r) => r.json()).catch(() => ({}));
+    const verified = new Set((ver.outgoing_caller_ids || []).map((x) => x.phone_number));
+    for (const [u, n] of Object.entries(recipients)) console.log(`Recipient ${u} ${mask(n)}: ${verified.has(n) ? 'verified, trial can text it' : 'NOT verified: a trial account can only text verified numbers'}`);
+  }
+  console.log('Nothing was sent.');
+  process.exit(0);
+}
+
 /* ---------- ledger: once per message, per-day cap ---------- */
 const LEDGER = '.sms-relay.json';
 const today = () => new Date().toISOString().slice(0, 10);

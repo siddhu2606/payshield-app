@@ -1,4 +1,5 @@
 import { useEffect, useState, createContext, useContext, useCallback, useSyncExternalStore } from 'react';
+import { LANGS, langOf, setLang, reasonText, svfText, tr } from './core/i18n.js';
 import { TIER } from './core/risk.js';
 import { syncStatus, setRoom } from './core/sync.js';
 
@@ -91,30 +92,44 @@ export function Gauge({ score, tier, size = 190 }) {
   );
 }
 
-export function ReasonList({ reasons, limit = 6 }) {
+export function ReasonList({ reasons, limit = 6, lang = 'en', purpose }) {
   if (!reasons?.length) return <p className="muted" style={{ margin: 0 }}>No warning signs found.</p>;
   return (
     <ul className="reasons">
-      {reasons.slice(0, limit).map((r) => (
-        <li key={r.code}><em>+{r.points}</em><span>{r.label}{r.detail && <small>{r.detail}</small>}</span></li>
-      ))}
+      {reasons.slice(0, limit).map((r) => {
+        const x = lang === 'en' ? r : reasonText(lang, r, purpose);
+        return <li key={r.code}><em>+{r.points}</em><span>{x.label}{x.detail && <small>{x.detail}</small>}</span></li>;
+      })}
     </ul>
   );
 }
 
-export function StoryVsFacts({ svf, facts, compact }) {
-  if (!svf) return null;
-  const f = facts || {};
-  const factLine = f.type && f.type !== 'unknown'
-    ? `${f.type === 'individual' ? 'Personal account' : f.type === 'business' ? 'Business account' : 'Government account'}${f.ageDays != null ? ` · opened ${f.ageDays < 60 ? `${f.ageDays} day${f.ageDays === 1 ? '' : 's'}` : `${Math.round(f.ageDays / 365)} yr`} ago` : ''}${f.senders24h != null ? ` · paid by ${f.senders24h} ${f.senders24h === 1 ? 'person' : 'people'} today` : ''}`
-    : 'Not found in the payee registry';
+/** EN / हिंदी / मराठी switch for the warning screens. Saved per person and synced. */
+export function LangSwitch({ user, compact }) {
+  const lang = langOf(user);
   return (
-    <div className="card flat" style={{ borderColor: 'color-mix(in srgb, var(--t-crit) 45%, var(--line))', gap: 12 }}>
-      <div className="spread"><span className="eyebrow" style={{ color: 'var(--t-crit)' }}>Story vs facts</span>{!compact && <span className="eyebrow">synthetic registry</span>}</div>
+    <div className="seg lang-seg" role="group" aria-label="Warning language" style={compact ? { justifySelf: 'end' } : undefined}>
+      {LANGS.map(([k, l]) => <button key={k} lang={k} className={lang === k ? 'on' : ''} aria-pressed={lang === k} onClick={() => setLang(user, k)}>{l}</button>)}
+    </div>
+  );
+}
+
+export function StoryVsFacts({ svf: raw, facts, compact, lang = 'en', purpose }) {
+  if (!raw) return null;
+  const svf = svfText(lang, raw, purpose);
+  const T = tr(lang).svf;
+  const f = facts || {};
+  const age = f.ageDays != null && (lang === 'en' && f.ageDays >= 60 ? `opened ${Math.round(f.ageDays / 365)} yr ago` : T.opened(f.ageDays));
+  const factLine = f.type && f.type !== 'unknown'
+    ? [T[f.type] || T.individual, age, f.senders24h != null && T.paid(f.senders24h)].filter(Boolean).join(' · ')
+    : T.notFound;
+  return (
+    <div className="card flat" style={{ borderColor: 'color-mix(in srgb, var(--t-crit) 45%, var(--line))', gap: 12 }} lang={lang}>
+      <div className="spread"><span className="eyebrow" style={{ color: 'var(--t-crit)' }}>{T.title}</span>{!compact && <span className="eyebrow">synthetic registry</span>}</div>
       <div className="svf">
-        <div><small>You said it’s</small><b>{svf.said}</b></div>
+        <div><small>{T.said}</small><b>{svf.said}</b></div>
         <div className="ne" aria-label="does not match">≠</div>
-        <div><small>This account is</small><b>{factLine}</b></div>
+        <div><small>{T.is}</small><b>{factLine}</b></div>
       </div>
       <p style={{ margin: 0, fontSize: 13.5 }}>{svf.fact}</p>
     </div>

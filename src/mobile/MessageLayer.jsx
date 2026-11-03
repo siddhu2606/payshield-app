@@ -8,7 +8,8 @@ import { useDb, markMessageRead, linkOpened, messageByCode } from '../core/store
 import { scanMessage } from '../core/scan.js';
 import { isCode } from '../core/validate.js';
 import { chime } from '../core/speech.js';
-import { Sheet, ago } from '../ui.jsx';
+import { Sheet, ago, LangSwitch } from '../ui.jsx';
+import { tr, langOf, flagLabel } from '../core/i18n.js';
 import { Top } from './MobileApp.jsx';
 
 export const openInbox = () => window.dispatchEvent(new Event('ps:inbox'));
@@ -19,10 +20,12 @@ const VERDICT = {
   ok: { label: 'No warning signs', cls: 'c-low', color: 'var(--t-low)', Icon: ShieldCheck, body: 'Nothing unusual found. Still, never share a PIN or OTP.' }
 };
 
-export function ScanCard({ text, from, compact }) {
+export function ScanCard({ text, from, compact, lang = 'en' }) {
   const db = useDb();
   const r = scanMessage(text, { from, registry: db.registry });
-  const V = VERDICT[r.verdict];
+  const V0 = VERDICT[r.verdict];
+  const [vl, vb] = tr(lang).verdict[r.verdict];
+  const V = { ...V0, label: vl, body: vb };
   return (
     <div className="card" style={{ gap: 8, borderColor: `color-mix(in srgb, ${V.color} 45%, var(--line))` }}>
       <div className="spread"><span className="row" style={{ gap: 6, color: V.color, fontWeight: 700 }}><V.Icon size={17} />PayShield: {V.label}</span><span className="mono dim" style={{ fontSize: 12 }}>{r.score}/100</span></div>
@@ -32,7 +35,7 @@ export function ScanCard({ text, from, compact }) {
           {r.flags.slice(0, compact ? 3 : 8).map((f) => (
             <div key={f.code} className="row" style={{ alignItems: 'flex-start', gap: 8, fontSize: 13 }}>
               <span className="mono" style={{ color: V.color, minWidth: 30 }}>+{f.points}</span>
-              <span><b style={{ fontWeight: 600 }}>{f.label}</b><br /><small className="muted">{f.detail}</small></span>
+              <span><b style={{ fontWeight: 600 }}>{flagLabel(lang, f)}</b>{lang === 'en' && <><br /><small className="muted">{f.detail}</small></>}</span>
             </div>
           ))}
         </div>
@@ -111,7 +114,8 @@ export default function MessageLayer({ user }) {
         <Sheet onClose={() => setView(null)} label={`Message from ${current.from}`}>
           <div className="spread"><span className="h3">{current.from}</span><small className="dim">{ago(current.t)}</small></div>
           <Bubble m={current} onLink={() => openLink(current)} />
-          <ScanCard text={current.text} from={current.from} />
+          <LangSwitch user={user} />
+          <ScanCard text={current.text} from={current.from} lang={langOf(user)} />
           <button className="btn soft block" onClick={() => openLink(current)}><Link2 size={16} />Open the link anyway</button>
           <small className="help" style={{ margin: 0 }}>PayShield checks any payment opened from a message before money moves.</small>
           <button className="btn ghost block" onClick={() => setView(null)}><Trash2 size={16} />Ignore this message</button>

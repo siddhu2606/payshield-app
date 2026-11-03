@@ -31,6 +31,7 @@ In "digital arrest" and impersonation scams the victim enters the right PIN and 
 - **Scam SMS with a payment link:** the scam-caller phone can also *text* the target. The demo phone shows the SMS as a banner with a chime. PayShield scans it on the phone and labels it "Likely scam" with reasons. Tapping the link opens the payment screen with the scammer's details filled in, and a "came from a message link" signal (+15) is added to the score. Optionally the same SMS goes to a real phone through Twilio (see below).
 - **Real call detection (Android app):** a small native plugin (`plugins/call-state`) tells PayShield whether a phone or WhatsApp-style call is in progress, and whether the screen is being shared, while you pay. It's yes/no only: never the number, the audio or call logs. A judge can ring the phone for real and watch the score change.
 - **Caller voice on phones:** the APK reads the caller's lines with the phone's own text-to-speech engine. The browser uses Web Speech, unlocked by the "accept call" tap.
+- **Hindi and Marathi warnings:** the safety check, risk result, reasons, story-vs-facts card, message labels, call banners and lock screen switch between English, हिंदी and मराठी. Each person's choice is saved, and the warning can be read aloud in that language.
 - **Check a message:** in Safety, paste any SMS or WhatsApp text to get the same scam analysis.
 
 **Admin console:** overview charts, payments table with a case drawer, review queue (release or keep stopped), KYC queue (approving lifts the member's limit live), payee registry (mark an account reported), **mule network** (accounts linked by a shared device or phone number, so one report flags the whole ring; freeze with a lien, draft an STR for FIU-IND, share with 1930), policy (tune every weight and threshold with a live preview on the scenario suite), scenario suite against a rules-only baseline, a role-play recorder, an audit log, **Integrations & API** (architecture, connectors for bank, UPI, Account Aggregator and reporting, plus a live API playground), and **Security** (the 12-point review, with backups).
@@ -66,6 +67,7 @@ The website and APK are public, so the Twilio token can never be inside them. A 
 ```bash
 cp .env.example .env              # fill in TWILIO_AUTH_TOKEN, TWILIO_FROM, SMS_TO_u_aarav (never commit .env)
 npm run sms-relay -- --check      # validates config and prints the exact texts, sends nothing
+npm run sms-verify                # asks Twilio if the token, From number and recipients are OK, sends nothing
 npm run sms-relay                 # dry run: logs what it would send (SMS_LIVE=0)
 SMS_LIVE=1 npm run sms-relay      # really sends (or set SMS_LIVE=1 in .env)
 ```

@@ -4,7 +4,8 @@ import { useDeviceCall, askPhonePermission, isNativeApp } from '../../core/devic
 import { ScanCard } from '../MessageLayer.jsx';
 import { useDb, updateSettings, setTrustedContact, resetDemo } from '../../core/store.js';
 import { Top } from '../MobileApp.jsx';
-import { initials, Sheet, useToast, SyncBadge } from '../../ui.jsx';
+import { initials, Sheet, useToast, SyncBadge, LangSwitch } from '../../ui.jsx';
+import { langOf } from '../../core/i18n.js';
 
 export default function Safety({ user, signOut }) {
   const db = useDb();
@@ -29,6 +30,12 @@ export default function Safety({ user, signOut }) {
             <div className="row"><span className="avatar lg">{initials(contact.name)}</span><div className="grow"><b>{contact.name}</b><br /><small className="muted">Asked to check high-risk payments, only with your OK each time</small></div></div>
           ) : <p className="muted" style={{ margin: 0 }}>Choose someone you trust. When a payment looks risky, you can ask them to check it before money moves.</p>}
           <button className="btn soft block" onClick={() => setPick(true)}><UserCheck size={17} />{contact ? 'Change trusted contact' : 'Choose a trusted contact'}</button>
+        </div>
+
+        <div className="card">
+          <span className="eyebrow">Warning language · चेतावनी की भाषा · इशाऱ्याची भाषा</span>
+          <LangSwitch user={user} />
+          <small className="muted">The safety check, risk warnings, message labels and the lock screen use this language, and can be read aloud.</small>
         </div>
 
         <div className="card">
@@ -59,7 +66,7 @@ export default function Safety({ user, signOut }) {
           <span className="row" style={{ gap: 6 }}><ScanSearch size={17} color="var(--accent-2)" /><span className="eyebrow">Check a message</span></span>
           <small className="muted">Got an SMS or WhatsApp asking you to pay? Paste it here. It’s checked on this phone and not stored.</small>
           <textarea className="input" rows={3} maxLength={600} placeholder="Paste the message" value={msg} onChange={(e) => setMsg(e.target.value)} style={{ resize: 'vertical', minHeight: 76 }} />
-          {msg.trim().length > 8 && <ScanCard text={msg} compact />}
+          {msg.trim().length > 8 && <ScanCard text={msg} compact lang={langOf(user)} />}
         </div>
 
         <div className="card">

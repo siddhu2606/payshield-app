@@ -4,7 +4,10 @@ import { Link2, Check, X, Clock, PhoneCall, UserCheck, ShieldAlert, Search, Spar
 import { useDb, previewPayment, createPayment, decide, requestTrustedContact, pressureHold } from '../../core/store.js';
 import { QUESTIONS, PURPOSES, TIER } from '../../core/risk.js';
 import { Top } from '../MobileApp.jsx';
-import { inr, initials, Gauge, ReasonList, StoryVsFacts, MemberStatus, useToast } from '../../ui.jsx';
+import { inr, initials, Gauge, ReasonList, StoryVsFacts, MemberStatus, useToast, LangSwitch } from '../../ui.jsx';
+import { tr, langOf, questionText, purposeLabel, reasonText, svfText, SPEECH_LANG } from '../../core/i18n.js';
+import { speak, stopSpeaking } from '../../core/speech.js';
+import { Volume2 } from 'lucide-react';
 
 const DEMOS = [
   { label: 'Routine ₹2,000', upi: 'rohan.shah@okdemo', amount: 2000, note: 'Trip share' },
@@ -49,6 +52,8 @@ export default function PayFlow({ user }) {
   const amt = Number(String(amount).replace(/[^\d]/g, '')) || 0;
   const payeeName = saved.find((b) => b.upi === upi)?.name || db.registry[upi]?.name;
   const msg = source && (db.messages || []).find((m) => m.id === source.msgId);
+  const lang = langOf(user);
+  const L = tr(lang);
   const reset = () => { setSource(null); setStep('payee'); setUpi(''); setAmount(''); setNote(''); setPurpose(null); setAnswers({}); setTxId(null); setPreview(null); setErr(''); };
 
   const goReview = () => {
@@ -111,8 +116,8 @@ export default function PayFlow({ user }) {
 
         {msg && ['amount', 'review'].includes(step) && (
           <div className="tier-banner tb-HIGH" style={{ gap: 4 }}>
-            <span className="row" style={{ gap: 6 }}><Link2 size={16} color="var(--t-high)" /><b style={{ fontSize: 14.5 }}>Opened from a link in a message</b></span>
-            <p style={{ fontSize: 13 }}>From {msg.from}. You didn’t type these details. PayShield will check this payment before any money moves.</p>
+            <span className="row" style={{ gap: 6 }}><Link2 size={16} color="var(--t-high)" /><b style={{ fontSize: 14.5 }}>{L.linkTitle}</b></span>
+            <p style={{ fontSize: 13 }}>{L.linkBody(msg.from)}</p>
           </div>
         )}
         {step === 'amount' && (
@@ -160,24 +165,25 @@ export default function PayFlow({ user }) {
 
         {step === 'check' && (
           <>
-            <p className="muted" style={{ margin: 0 }}>Answer honestly. Nobody else sees these answers, and you can skip.</p>
+            <LangSwitch user={user} />
+            <p className="muted" style={{ margin: 0 }}>{L.checkIntro}</p>
             <div className="q-card">
-              <p>Who asked you to make this payment, and what is it for?</p>
+              <p>{L.whoAsked}</p>
               <div className="purpose">
-                {PURPOSES.map((p) => <button key={p.id} className={purpose === p.id ? 'on' : ''} onClick={() => setPurpose(p.id)}>{p.label}</button>)}
+                {PURPOSES.map((p) => <button key={p.id} className={purpose === p.id ? 'on' : ''} onClick={() => setPurpose(p.id)}>{purposeLabel(lang, p)}</button>)}
               </div>
             </div>
             {QUESTIONS.map((q) => (
               <div className="q-card" key={q.id}>
-                <p>{q.q}</p>
+                <p>{questionText(lang, q)}</p>
                 <div className="yn">
-                  {[[true, 'Yes'], [false, 'No']].map(([v, l]) => <button key={l} className={answers[q.id] === v ? 'on' : ''} onClick={() => setAnswers({ ...answers, [q.id]: v })}>{l}</button>)}
+                  {[[true, L.yes], [false, L.no]].map(([v, l]) => <button key={String(v)} className={answers[q.id] === v ? 'on' : ''} onClick={() => setAnswers({ ...answers, [q.id]: v })}>{l}</button>)}
                 </div>
-                {q.id === 'independent_verification' && <small className="help">Checking means using a number or website you found yourself, not one given by the person asking for money.</small>}
+                {q.id === 'independent_verification' && lang === 'en' && <small className="help">Checking means using a number or website you found yourself, not one given by the person asking for money.</small>}
               </div>
             ))}
-            <button className="btn block" onClick={() => submit(false)}>See result</button>
-            <button className="btn ghost block" onClick={() => submit(true)}>Skip the questions</button>
+            <button className="btn block" onClick={() => submit(false)}>{L.seeResult}</button>
+            <button className="btn ghost block" onClick={() => submit(true)}>{L.skip}</button>
           </>
         )}
 
@@ -211,7 +217,17 @@ function PayeeFacts({ facts }) {
 function RiskResult({ user, tx, onDone, toast }) {
   const db = useDb();
   const a = tx.assessment;
-  const copy = TIER_COPY[a.tier];
+  const lang = langOf(user);
+  const L = tr(lang);
+  const [tierLabel, title, body] = L.tier[a.tier];
+  const copy = lang === 'en' ? TIER_COPY[a.tier] : { title, body };
+  const helpParts = L.helpline.split('1930');
+  useEffect(() => () => { stopSpeaking(); }, []);
+  const readAloud = () => {
+    const why = a.reasons.slice(0, 4).map((r) => { const x = reasonText(lang, r, tx.purpose); return `${x.label}. ${x.detail || ''}`; }).join(' ');
+    const svf = svfText(lang, a.storyVsFacts, tx.purpose);
+    speak(`${copy.title}. ${copy.body} ${why} ${svf?.fact || ''}`, { lang: SPEECH_LANG[lang], rate: 0.95, pitch: 1 });
+  };
   const contact = user.trustedContactId && db.users[user.trustedContactId];
   const canAsk = contact && user.settings?.consentTrusted;
   const [wait, setWait] = useState(a.tier === 'HIGH' ? 10 : 0);
@@ -222,36 +238,38 @@ function RiskResult({ user, tx, onDone, toast }) {
 
   return (
     <>
-      <div className={`tier-banner tb-${a.tier}`}>
-        <span className="eyebrow" style={{ color: TIER[a.tier].color }}>{TIER[a.tier].label} risk</span>
+      <LangSwitch user={user} />
+      <div className={`tier-banner tb-${a.tier}`} lang={lang}>
+        <div className="spread"><span className="eyebrow" style={{ color: TIER[a.tier].color }}>{L.risk(tierLabel)}</span>
+          <button className="iconbtn sm" onClick={readAloud} aria-label={L.readAloud} title={L.readAloud}><Volume2 size={15} /></button></div>
         <b>{copy.title}</b>
         <p>{copy.body}</p>
       </div>
-      <div className="card" style={{ justifyItems: 'center', paddingTop: 20 }}>
+      <div className="card" style={{ justifyItems: 'center', paddingTop: 20 }} lang={lang}>
         <Gauge score={a.score} tier={a.tier} />
-        <div style={{ width: '100%' }}><span className="eyebrow">Why we paused</span><div style={{ height: 8 }} /><ReasonList reasons={a.reasons} /></div>
+        <div style={{ width: '100%' }}><span className="eyebrow">{L.why}</span><div style={{ height: 8 }} /><ReasonList reasons={a.reasons} lang={lang} purpose={tx.purpose} /></div>
       </div>
-      <StoryVsFacts svf={a.storyVsFacts} facts={tx.facts} />
+      <StoryVsFacts svf={a.storyVsFacts} facts={tx.facts} lang={lang} purpose={tx.purpose} />
 
       <div className="col" style={{ gap: 8 }}>
         {a.tier === 'MEDIUM' && <>
-          <button className="btn block" onClick={() => act('CONTINUED')}>I’ve checked, pay {inr(tx.amount)}</button>
-          <button className="btn soft block" onClick={() => act('VERIFIED')}><PhoneCall size={17} />I’ll verify first</button>
-          <button className="btn ghost block" onClick={() => act('POSTPONED')}><Clock size={17} />Pay later</button>
+          <button className="btn block" onClick={() => act('CONTINUED')}>{L.checkedPay(inr(tx.amount))}</button>
+          <button className="btn soft block" onClick={() => act('VERIFIED')}><PhoneCall size={17} />{L.verify}</button>
+          <button className="btn ghost block" onClick={() => act('POSTPONED')}><Clock size={17} />{L.later}</button>
         </>}
         {(a.tier === 'HIGH' || a.tier === 'CRITICAL') && <>
-          <button className="btn danger block" onClick={() => act('CANCELLED')}><X size={18} />Cancel payment</button>
+          <button className="btn danger block" onClick={() => act('CANCELLED')}><X size={18} />{L.cancel}</button>
           {canAsk
-            ? <button className="btn soft block" onClick={() => setConfirmAsk(true)}><UserCheck size={17} />Ask {contact.name.split(' ')[0]} to check</button>
-            : <button className="btn soft block" disabled title="Add a trusted contact in Safety"><UserCheck size={17} />No trusted contact set</button>}
-          <button className="btn ghost block" onClick={() => act('POSTPONED')}><Clock size={17} />Postpone</button>
+            ? <button className="btn soft block" onClick={() => setConfirmAsk(true)}><UserCheck size={17} />{L.ask(contact.name.split(' ')[0])}</button>
+            : <button className="btn soft block" disabled title="Add a trusted contact in Safety"><UserCheck size={17} />{L.noContact}</button>}
+          <button className="btn ghost block" onClick={() => act('POSTPONED')}><Clock size={17} />{L.postpone}</button>
           {a.tier === 'HIGH'
-            ? <button className="btn ghost block" disabled={wait > 0} onClick={() => act('CONTINUED')}>{wait > 0 ? `Continue after review (${wait}s)` : `Continue and pay ${inr(tx.amount)}`}</button>
-            : <button className="btn ghost block" onClick={() => act('PENDING_REVIEW')}><Hourglass size={17} />I still want to pay: send for review</button>}
+            ? <button className="btn ghost block" disabled={wait > 0} onClick={() => act('CONTINUED')}>{wait > 0 ? L.wait(wait) : L.continuePay(inr(tx.amount))}</button>
+            : <button className="btn ghost block" onClick={() => act('PENDING_REVIEW')}><Hourglass size={17} />{L.review}</button>}
         </>}
         <div className="card flat tight">
           <span className="row" style={{ alignItems: 'flex-start' }}><ShieldAlert size={18} color="var(--t-high)" style={{ flex: 'none', marginTop: 2 }} />
-            <small className="muted">If someone is threatening you, hang up. Report it on the national cyber-crime helpline <b style={{ color: 'var(--fg)' }} className="mono">1930</b> or at <span className="mono" style={{ color: 'var(--fg)' }}>cybercrime.gov.in</span>.</small>
+            <small className="muted">{helpParts[0]}<b style={{ color: 'var(--fg)' }} className="mono">1930</b>{helpParts[1]}</small>
           </span>
         </div>
       </div>
