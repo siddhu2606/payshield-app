@@ -1,0 +1,9 @@
+{
+  "appId": "in.vslash.payshield",
+  "appName": "PayShield",
+  "webDir": "dist",
+  "backgroundColor": "#070A10",
+  "android": {
+    "backgroundColor": "#070A10"
+  }
+}
