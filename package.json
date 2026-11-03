@@ -25,7 +25,7 @@
     "lucide-react": "^0.441.0",
     "mqtt": "^5.16.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5",
     "recharts": "^2.12.7",
     "payshield-call-state": "file:plugins/call-state"
