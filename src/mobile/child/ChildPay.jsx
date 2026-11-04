@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Check, Hourglass, AlertTriangle } from 'lucide-react';
+import { Check, Hourglass, AlertTriangle, Link2 } from 'lucide-react';
 import { useDb, childPay, childSpentToday } from '../../core/store.js';
 import { factsFor } from '../../core/data.js';
 import { Top } from '../MobileApp.jsx';
@@ -51,6 +51,12 @@ export default function ChildPay({ user }) {
     <>
       <Top title="Pay" sub={user.approveAll ? `${g} approves every payment` : `${inr(left)} left today`} />
       <div className="m-body">
+        {source?.msgId && (() => { const m = (db.messages || []).find((x) => x.id === source.msgId); return m && (
+          <div className="tier-banner tb-HIGH" style={{ gap: 4 }}>
+            <span className="row" style={{ gap: 6 }}><Link2 size={16} color="var(--t-high)" /><b style={{ fontSize: 14.5 }}>Opened from a link in a message</b></span>
+            <p style={{ fontSize: 13 }}>From {m.from}. You didn’t type these details. {g} will check this payment before any money moves.</p>
+          </div>
+        ); })()}
         <div className="card">
           <span className="eyebrow">Pay to</span>
           <div className="list">

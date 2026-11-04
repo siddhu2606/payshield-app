@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, NavLink, useSearchParams, useNavigate } from 'react-router-dom';
-import { Home, Send, Clock, ShieldCheck, Bell, Users, HandCoins, Wallet, UserRound, ArrowLeft, Baby, Check, Camera, IdCard, ChevronRight, Delete, PhoneCall, ListChecks } from 'lucide-react';
-import { useDb, registerMember, markNotificationsRead } from '../core/store.js';
+import { Routes, Route, Navigate, NavLink, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { Home, Send, Clock, ShieldCheck, Bell, Users, HandCoins, Wallet, UserRound, ArrowLeft, Baby, Check, Camera, IdCard, ChevronRight, Delete, PhoneCall, ListChecks, Link2 } from 'lucide-react';
+import { useDb, registerMember, markNotificationsRead, messageByCode } from '../core/store.js';
 import { PERSONAS } from '../core/data.js';
 import { cleanName, cleanMobile } from '../core/validate.js';
 import { Logo, Sheet, ago, initials, SyncBadge } from '../ui.jsx';
@@ -86,10 +86,18 @@ export default function MobileApp() {
   const signIn = (s) => { writeSession(s); setSession(s); };
   const signOut = () => { writeSession(null); setSession(null); };
   const user = session && db.users[session.userId];
+  // A payment link from an SMS (#/app/l/CODE) always opens on the member or child it was sent to. If nobody is
+  // signed in, or the phone is signed in as someone else (guardian, caller, or the other family member), go
+  // straight to that person's passcode, then on to the filled-in payment screen.
+  const loc = useLocation();
+  const linkCode = (loc.pathname.match(/\/l\/([A-Z2-9]{6})$/) || [])[1] || null;
+  const linkMsg = linkCode ? messageByCode(db, linkCode) : null;
+  const linkRole = linkMsg ? Object.keys(PERSONAS).find((k) => PERSONAS[k].id === linkMsg.toUserId && ['member', 'child'].includes(k)) || null : null;
+  const linkNeedsSignIn = !!linkCode && (!user || !['member', 'child'].includes(user.role) || (linkRole && PERSONAS[linkRole].id !== user.id));
   useEffect(() => { if (user && ['member', 'child'].includes(user.role)) startCallWatch(); }, [user?.role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   let content;
-  if (!user) content = <SignIn onSignIn={signIn} />;
+  if (!user || linkNeedsSignIn) content = <SignIn key={linkCode ? `link-${linkRole}` : 'plain'} onSignIn={signIn} link={linkCode ? { role: linkRole, from: linkMsg?.from } : null} />;
   else if (user.lock && ['member', 'child'].includes(user.role)) content = <LockScreen user={user} />;
   else if (user.role === 'member') content = <MemberApp user={user} signOut={signOut} />;
   else if (user.role === 'child') content = <ChildApp user={user} signOut={signOut} />;
@@ -184,11 +192,35 @@ const ROLE_CARDS = [
   { role: 'caller', title: 'Scam caller', sub: 'Role-play phone that makes the fake calls', Icon: PhoneCall, color: 'var(--t-crit)', sim: true }
 ];
 
-function SignIn({ onSignIn }) {
+function SignIn({ onSignIn, link }) {
   const [role, setRole] = useState(null);
   const [onboard, setOnboard] = useState(false);
+  const [listed, setListed] = useState(false);
+  const shown = role || (!listed && link?.role) || null;
   if (onboard) return <Onboarding onDone={(id) => onSignIn({ userId: id, role: 'member' })} onBack={() => setOnboard(false)} />;
-  if (role) return <Passcode role={role} onBack={() => setRole(null)} onOk={() => onSignIn({ userId: PERSONAS[role].id, role })} />;
+  if (shown) return <Passcode role={shown} link={link} onBack={() => { setRole(null); setListed(true); }} onOk={() => onSignIn({ userId: PERSONAS[shown].id, role: shown })} />;
+  if (link) {
+    return (
+      <div className="m-body" style={{ paddingTop: 'calc(30px + env(safe-area-inset-top, 0px))' }}>
+        <div className="signin">
+          <Logo size={34} sub="Pause before you pay" />
+          <div style={{ marginTop: 18 }}>
+            <h1 className="h2" style={{ fontSize: 28 }}>You opened a payment link</h1>
+            <p className="muted" style={{ margin: '8px 0 0' }}>{link.from ? `It came in a message from ${link.from}. ` : ''}Sign in and PayShield will check it before any money moves.</p>
+          </div>
+          {!link.role && <p className="help" style={{ margin: 0 }}>Finding who this link was sent to…</p>}
+          {ROLE_CARDS.filter((c) => ['member', 'child'].includes(c.role)).map(({ role: r, title, Icon, color }) => (
+            <button key={r} className="persona" onClick={() => setRole(r)}>
+              <span className="ic" style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}><Icon size={23} /></span>
+              <span className="grow"><b style={{ display: 'block', fontSize: 16 }}>{title}</b><small className="muted">Demo: {PERSONAS[r].label}</small></span>
+              <ChevronRight size={18} className="dim" />
+            </button>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'center' }}><SyncBadge /></div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="m-body" style={{ paddingTop: 'calc(30px + env(safe-area-inset-top, 0px))' }}>
       <div className="signin">
@@ -212,7 +244,7 @@ function SignIn({ onSignIn }) {
   );
 }
 
-function Passcode({ role, onBack, onOk }) {
+function Passcode({ role, link, onBack, onOk }) {
   const db = useDb();
   const [code, setCode] = useState('');
   const [err, setErr] = useState('');
@@ -243,6 +275,7 @@ function Passcode({ role, onBack, onOk }) {
       <div className="m-body" style={{ alignContent: 'center', gap: 22 }}>
         <div style={{ textAlign: 'center', display: 'grid', gap: 10, justifyItems: 'center' }}>
           <span className="avatar lg">{initials(PERSONAS[role].label)}</span>
+          {link && <span className="pill fill c-high" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><Link2 size={13} />Opening a payment link{link.from ? ` from ${link.from}` : ''}</span>}
           <b style={{ fontSize: 18 }}>Enter your app passcode</b>
           <span className="help">Demo passcode: <span className="mono">1234</span></span>
         </div>
