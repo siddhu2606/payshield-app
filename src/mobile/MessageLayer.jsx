@@ -11,6 +11,7 @@ import { chime } from '../core/speech.js';
 import { Sheet, ago, LangSwitch } from '../ui.jsx';
 import { tr, langOf, flagLabel } from '../core/i18n.js';
 import { Top } from './MobileApp.jsx';
+import { SenderBadge } from './SmsShield.jsx';
 
 export const openInbox = () => window.dispatchEvent(new Event('ps:inbox'));
 
@@ -113,6 +114,7 @@ export default function MessageLayer({ user }) {
       {current && (
         <Sheet onClose={() => setView(null)} label={`Message from ${current.from}`}>
           <div className="spread"><span className="h3">{current.from}</span><small className="dim">{ago(current.t)}</small></div>
+          <div><SenderBadge from={current.from} /></div>
           <Bubble m={current} onLink={() => openLink(current)} />
           <LangSwitch user={user} />
           <ScanCard text={current.text} from={current.from} lang={langOf(user)} />

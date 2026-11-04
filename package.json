@@ -9,7 +9,7 @@
     "build": "vite build",
     "build:app": "vite build --mode app",
     "preview": "vite preview",
-    "test": "node --test tests/engine.test.js tests/security.test.js tests/i18n.test.js",
+    "test": "node --test tests/engine.test.js tests/security.test.js tests/i18n.test.js tests/sender.test.js",
     "postinstall": "node scripts/patch-deps.mjs",
     "sms-relay": "node scripts/sms-relay.mjs",
     "sms-verify": "node scripts/sms-relay.mjs --verify"

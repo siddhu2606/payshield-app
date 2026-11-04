@@ -2,6 +2,7 @@
 // matches known scam patterns. Pure function, runs on the phone. PayShield never reads the real SMS inbox.
 import { findScriptWords } from './risk.js';
 import { factsFor } from './data.js';
+import { checkSender } from './sender.js';
 
 const URGENCY = ['now', 'immediately', 'within', 'today', 'tonight', 'min', 'minutes', 'hours', 'last chance', 'expire', 'expired', 'urgent', 'fast'];
 const THREAT = ['arrest', 'police', 'case', 'court', 'warrant', 'block', 'blocked', 'suspend', 'penalty', 'legal', 'fir', 'jail'];
@@ -14,7 +15,7 @@ const LOOKALIKE = /(sbi|hdfc|icici|axis|paytm|phonepe|gpay|npci|rbi|incometax|ui
 
 export function scanMessage(text = '', { from = '', registry = {} } = {}) {
   const t = ` ${String(text).toLowerCase().replace(/[’']/g, "'")} `;
-  const has = (list) => list.filter((w) => new RegExp(`[^a-z]${w.replace(/ /g, '\s+')}[^a-z]`).test(t));
+  const has = (list) => list.filter((w) => new RegExp(`[^a-z]${w.replace(/ /g, '\\s+')}[^a-z]`).test(t));
   const flags = [];
   const money = text.match(MONEY);
   const url = text.match(URL);
@@ -35,6 +36,11 @@ export function scanMessage(text = '', { from = '', registry = {} } = {}) {
   if (urgent.length) flags.push({ code: 'urgency', points: 15, label: 'Rushes you', detail: `Uses ${urgent.slice(0, 3).map((w) => `“${w}”`).join(', ')}.` });
   if (secret.length) flags.push({ code: 'secrecy', points: 15, label: 'Tells you to keep it secret', detail: 'Genuine banks and police never ask you to hide a payment from family.' });
   if (/\b(won|winner|prize|free|cashback|guaranteed|300%|double)\b/.test(t)) flags.push({ code: 'too_good', points: 10, label: 'Prize or guaranteed returns', detail: 'Offers that sound too good are a common hook.' });
+  // Sender ID that imitates a bank or claims to be an authority (SMS Shield), e.g. VK-CBIGOV or AX-HDFCBN.
+  if (from && /^[a-z]{2}-[a-z0-9]{6}(-[pstg])?$/i.test(from.trim())) {
+    const sc = checkSender(from);
+    if (sc.verdict === 'lookalike' || sc.verdict === 'authority') flags.push({ code: 'fake_sender', points: 20, label: 'Sender ID imitates a bank or authority', detail: `${from}: ${sc.title.toLowerCase()}. ${sc.verdict === 'authority' ? 'Police, CBI and courts never send payment SMS.' : 'It is not that organisation’s registered sender ID.'}` });
+  }
   if (from && /^\+?\d/.test(from.replace(/\s/g, ''))) flags.push({ code: 'personal_sender', points: 10, label: 'Sent from a personal mobile number', detail: 'Banks and government send from registered short codes, not personal numbers.' });
   if (upi) {
     const f = factsFor(registry, upi.toLowerCase());

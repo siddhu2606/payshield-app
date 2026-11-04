@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ShieldCheck, UserCheck, PhoneCall, LogOut, RotateCcw, Hand, Info, ScanSearch, Landmark, Plus, Smartphone, Check } from 'lucide-react';
 import { useDeviceCall, askPhonePermission, isNativeApp } from '../../core/device.js';
 import { ScanCard } from '../MessageLayer.jsx';
+import { SmsShieldCard } from '../SmsShield.jsx';
 import { useDb, updateSettings, setTrustedContact, resetDemo } from '../../core/store.js';
 import { Top } from '../MobileApp.jsx';
 import { initials, Sheet, useToast, SyncBadge, LangSwitch } from '../../ui.jsx';
@@ -61,6 +62,8 @@ export default function Safety({ user, signOut }) {
             <small className="muted">The Android app detects a real phone or WhatsApp call, and screen sharing, while you pay. In a browser this isn’t possible, so the role-play caller phone simulates the call.</small>
           )}
         </div>
+
+        <SmsShieldCard />
 
         <div className="card">
           <span className="row" style={{ gap: 6 }}><ScanSearch size={17} color="var(--accent-2)" /><span className="eyebrow">Check a message</span></span>
