@@ -4,7 +4,7 @@ PayShield is a hackathon prototype: a static web app (GitHub Pages) plus an Andr
 
 | # | Check | Status | How |
 |---|---|---|---|
-| 1 | Secrets only in env vars, never in frontend or git | Done | The Twilio token lives only in a git-ignored `.env`, read by `scripts/sms-relay.mjs`. No keys in the web or APK bundle. CI runs gitleaks on the full history and greps the build for key patterns. |
+| 1 | Secrets only in env vars, never in frontend or git | Done | The SMS API key (Fast2SMS or Twilio) lives only in a git-ignored `.env`, read by `scripts/sms-relay.mjs`. No keys in the web or APK bundle. CI runs gitleaks on the full history and greps the build for key patterns. |
 | 2 | Admin routes need an admin login | Done | Every `/admin` route renders sign-in until a valid admin session exists. The password is checked against a bcrypt hash, then a second factor. The session lives in `sessionStorage` and times out after 20 idle minutes. |
 | 3 | Every page checks the user is signed in | Done | Phone screens need a session and a passcode. A locked phone renders only the lock screen. |
 | 4 | Users only read/change their own data | Prototype | Each role's screens load only its own records, and sync is end-to-end encrypted per room. Production needs server-side row-level authorisation. |

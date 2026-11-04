@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// PayShield SMS relay: turns "Send as a real SMS" on the scam-caller phone into a real text message via Twilio.
+// PayShield SMS relay: turns "Send as a real SMS" on the scam-caller phone into a real text message.
+// Provider: Fast2SMS (Indian numbers, Quick SMS route) by default, or Twilio with SMS_PROVIDER=twilio.
 //
-// Why a relay: the website and APK are public, so the Twilio token can never be in them. This small script runs on
-// the team laptop, reads the token from .env (git-ignored), joins the same encrypted sync room as the phones and
+// Why a relay: the website and APK are public, so the API key can never be in them. This small script runs on
+// the team laptop, reads the key from .env (git-ignored), joins the same encrypted sync room as the phones and
 // sends only what it is allowed to send.
 //
-// Safety rails (Twilio trial has a small daily allowance, so nothing is wasted):
+// Safety rails (every text costs wallet balance or trial allowance, so nothing is wasted):
 //  - DRY RUN by default. Nothing is sent unless SMS_LIVE=1 in .env.
 //  - Daily cap (SMS_DAILY_CAP, default 5) and a minimum gap between texts (SMS_MIN_GAP_SEC, default 20).
 //  - Each message is sent at most once (ledger in .sms-relay.json), even if the relay restarts.
@@ -15,6 +16,7 @@
 //
 // Usage:  npm run sms-relay            (dry run unless SMS_LIVE=1)
 //         npm run sms-relay -- --check (check config and show the exact texts, then exit; sends nothing)
+//         npm run sms-verify           (asks the provider if the key works and shows the balance; sends nothing)
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import mqtt from 'mqtt';
 import { roomKey, roomTopicId, seal, open } from '../src/core/crypto.js';
@@ -36,7 +38,12 @@ const LIVE = E.SMS_LIVE === '1';
 const CAP = Math.max(0, Math.min(50, Number(E.SMS_DAILY_CAP || 5)));
 const GAP = Math.max(5, Number(E.SMS_MIN_GAP_SEC || 20)) * 1000;
 const BROKERS = E.SYNC_BROKER ? [E.SYNC_BROKER] : ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt'];
-const TRIAL_PREFIX = 'Sent from your Twilio trial account - ';
+const PROVIDER = String(E.SMS_PROVIDER || (E.FAST2SMS_API_KEY ? 'fast2sms' : E.TWILIO_AUTH_TOKEN ? 'twilio' : 'fast2sms')).toLowerCase() === 'twilio' ? 'twilio' : 'fast2sms';
+const PROVIDER_NAME = PROVIDER === 'twilio' ? 'Twilio' : 'Fast2SMS';
+// Twilio trial adds its own prefix. On Fast2SMS we add a short demo tag ourselves, so the real text can never be
+// mistaken for a genuine message from an authority if it is forwarded.
+const TRIAL_PREFIX = PROVIDER === 'twilio' ? 'Sent from your Twilio trial account - ' : '';
+const DEMO_TAG = PROVIDER === 'fast2sms' ? '[PayShield demo] ' : '';
 const E164 = /^\+[1-9]\d{7,14}$/;
 const recipients = Object.fromEntries(Object.entries(E).filter(([k, v]) => k.startsWith('SMS_TO_') && E164.test(v)).map(([k, v]) => [k.slice(7), v]));
 const mask = (n) => (n ? `${n.slice(0, 3)}••••••${n.slice(-3)}` : 'none');
@@ -46,24 +53,30 @@ const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
 export function bodyFor(scriptId, code) {
   const sc = SCRIPTS.find((s) => s.id === scriptId);
   if (!sc?.sms || !/^[A-Z2-9]{6}$/.test(code || '')) return null;
-  return sc.sms.text.replace('{link}', smsLink(code, ROOM));
+  return DEMO_TAG + sc.sms.text.replace('{link}', smsLink(code, ROOM));
 }
 const segments = (t) => (/^[\x20-\x7E\n]*$/.test(t) ? Math.ceil(t.length / (t.length > 160 ? 153 : 160)) : Math.ceil(t.length / (t.length > 70 ? 67 : 70)));
 
 function configProblems() {
   const p = [];
-  if (!/^AC[0-9a-f]{32}$/.test(E.TWILIO_ACCOUNT_SID || '')) p.push('TWILIO_ACCOUNT_SID missing or malformed');
-  if (!/^[0-9a-f]{32}$/.test(E.TWILIO_AUTH_TOKEN || '')) p.push('TWILIO_AUTH_TOKEN missing or malformed');
-  if (!E164.test(E.TWILIO_FROM || '')) p.push('TWILIO_FROM missing (your Twilio phone number, e.g. +1XXXXXXXXXX)');
+  if (PROVIDER === 'fast2sms') {
+    if (!/^[A-Za-z0-9]{20,}$/.test(E.FAST2SMS_API_KEY || '')) p.push('FAST2SMS_API_KEY missing (Fast2SMS dashboard > Dev API > API key)');
+    const foreign = Object.entries(recipients).filter(([, n]) => !/^\+91[6-9]\d{9}$/.test(n)).map(([u]) => u);
+    if (foreign.length) p.push(`Fast2SMS only texts Indian mobiles (+91 and 10 digits): fix SMS_TO_${foreign.join(', SMS_TO_')}`);
+  } else {
+    if (!/^AC[0-9a-f]{32}$/.test(E.TWILIO_ACCOUNT_SID || '')) p.push('TWILIO_ACCOUNT_SID missing or malformed');
+    if (!/^[0-9a-f]{32}$/.test(E.TWILIO_AUTH_TOKEN || '')) p.push('TWILIO_AUTH_TOKEN missing or malformed');
+    if (!E164.test(E.TWILIO_FROM || '')) p.push('TWILIO_FROM missing (your Twilio phone number, e.g. +1XXXXXXXXXX)');
+  }
   if (!Object.keys(recipients).length) p.push('No SMS_TO_u_aarav / SMS_TO_c_anaya recipient set (E.164, e.g. +91XXXXXXXXXX)');
   return p;
 }
 
 if (process.argv.includes('--check')) {
   const p = configProblems();
-  console.log(`Room: ${ROOM}\nMode: ${LIVE ? 'LIVE (will send real SMS)' : 'DRY RUN (sends nothing)'}\nDaily cap: ${CAP}, gap ${GAP / 1000}s\nRecipients: ${Object.entries(recipients).map(([u, n]) => `${u} → ${mask(n)}`).join(', ') || 'none'}`);
+  console.log(`Provider: ${PROVIDER_NAME}\nRoom: ${ROOM}\nMode: ${LIVE ? 'LIVE (will send real SMS)' : 'DRY RUN (sends nothing)'}\nDaily cap: ${CAP}, gap ${GAP / 1000}s\nRecipients: ${Object.entries(recipients).map(([u, n]) => `${u} → ${mask(n)}`).join(', ') || 'none'}`);
   console.log(p.length ? `Config problems:\n - ${p.join('\n - ')}` : 'Config looks complete.');
-  console.log('\nTexts (with the trial prefix Twilio adds):');
+  console.log(TRIAL_PREFIX ? '\nTexts (with the trial prefix Twilio adds):' : '\nTexts exactly as sent:');
   for (const s of SCRIPTS) {
     const b = bodyFor(s.id, 'ABC234');
     const full = TRIAL_PREFIX + b;
@@ -72,7 +85,18 @@ if (process.argv.includes('--check')) {
   process.exit(0);
 }
 
-// --verify: ask Twilio whether the credentials work and the From number belongs to the account. Read-only, sends nothing.
+// --verify: ask the provider whether the key works (and, for Fast2SMS, the wallet balance). Read-only, sends nothing.
+if (process.argv.includes('--verify') && PROVIDER === 'fast2sms') {
+  const p = configProblems();
+  if (p.length) { console.log(`Fix .env first:\n - ${p.join('\n - ')}`); process.exit(1); }
+  const r = await fetch('https://www.fast2sms.com/dev/wallet', { method: 'POST', headers: { authorization: E.FAST2SMS_API_KEY } }).catch((e) => ({ ok: false, status: e.message }));
+  const j = r.json ? await r.json().catch(() => ({})) : {};
+  if (!r.ok || j.return === false) { console.log(`Fast2SMS rejected the request (HTTP ${r.status}${j.message ? `: ${[].concat(j.message).join(' ')}` : ''}). Check FAST2SMS_API_KEY.`); process.exit(1); }
+  console.log(`API key OK · wallet balance Rs ${j.wallet ?? '?'}${j.sms_count != null ? ` · about ${j.sms_count} SMS` : ''}`);
+  for (const [u, n] of Object.entries(recipients)) console.log(`Recipient ${u}: ${mask(n)}`);
+  console.log('Quick SMS is charged per text from this wallet. Nothing was sent.');
+  process.exit(0);
+}
 if (process.argv.includes('--verify')) {
   const p = configProblems();
   if (p.length) { console.log(`Fix .env first:\n - ${p.join('\n - ')}`); process.exit(1); }
@@ -113,6 +137,19 @@ async function twilioSend(to, body) {
   return j.sid;
 }
 
+// Fast2SMS Quick SMS route ('q'): plain text to Indian 10-digit numbers, no DLT template needed.
+async function fast2smsSend(to, body) {
+  const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+    method: 'POST',
+    headers: { authorization: E.FAST2SMS_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ route: 'q', message: body, language: 'english', flash: 0, numbers: to.replace(/^\+91/, '') })
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.return !== true) throw Object.assign(new Error([].concat(j.message || `HTTP ${res.status}`).join(' ')), { code: j.status_code });
+  return String(j.request_id || 'ok');
+}
+const sendSms = PROVIDER === 'twilio' ? twilioSend : fast2smsSend;
+
 /* ---------- room ---------- */
 const key = await roomKey(ROOM);
 const id = await roomTopicId(ROOM);
@@ -123,7 +160,7 @@ let seen = 0;
 let busy = false;
 let client = null;
 
-const relayStatus = (online) => seal(key, { online, mode: LIVE ? 'live' : 'dry-run', sentToday: ledger.sent, cap: CAP, at: Date.now() });
+const relayStatus = (online) => seal(key, { online, provider: PROVIDER_NAME, mode: LIVE ? 'live' : 'dry-run', sentToday: ledger.sent, cap: CAP, at: Date.now() });
 
 async function writeBack(msgId, real) {
   if (!latest) return;
@@ -157,13 +194,13 @@ async function process1() {
       else if (!LIVE) { real = { status: 'dry_run' }; log(`DRY RUN: would text ${mask(to)}: "${body}"`); }
       else {
         try {
-          const sid = await twilioSend(to, body);
+          const sid = await sendSms(to, body);
           ledger.sent += 1; ledger.lastAt = Date.now();
           real = { status: 'sent', ref: `${sid.slice(0, 6)}…` };
           log(`SENT to ${mask(to)} (${ledger.sent}/${CAP} today)`);
         } catch (e) {
           real = { status: 'failed', error: `${e.code || ''} ${e.message}`.trim().slice(0, 120) };
-          log('Twilio error:', real.error);
+          log(`${PROVIDER_NAME} error:`, real.error);
         }
       }
       ledger.handled[m.id] = real.status;
@@ -176,7 +213,7 @@ async function process1() {
 
 function connect(i) {
   const url = BROKERS[i % BROKERS.length];
-  log(`Connecting to ${new URL(url).hostname} for room "${ROOM}" (${LIVE ? 'LIVE' : 'dry run'}, cap ${CAP}/day, recipients ${Object.keys(recipients).join(', ') || 'none'})`);
+  log(`${PROVIDER_NAME} relay · connecting to ${new URL(url).hostname} for room "${ROOM}" (${LIVE ? 'LIVE' : 'dry run'}, cap ${CAP}/day, recipients ${Object.keys(recipients).join(', ') || 'none'})`);
   relayStatus(false).then((will) => {
     const c = mqtt.connect(url, { clientId: `ps-${ME}-${i}`, connectTimeout: 8000, reconnectPeriod: 4000, keepalive: 30, will: { topic: T.relay, payload: will, qos: 1, retain: true } });
     let opened = false;

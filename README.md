@@ -60,26 +60,29 @@ Guard rails: answering "I verified it" never subtracts points, and a legitimate 
 
 **Scenario suite** (`src/core/scenarios.js`): 10 normal and 9 coerced scripted payments. At the default policy, 8 of 9 coerced reach High or Critical, and 0 of 10 normal do. A transaction-rules baseline catches none of the coerced ones. The miss is the calm, fully convinced victim, which we state openly. These are synthetic design checks, not accuracy claims.
 
-## Real SMS through Twilio (optional)
+## Real SMS through Fast2SMS or Twilio (optional)
 
-The website and APK are public, so the Twilio token can never be inside them. A small relay runs on the team laptop instead. It joins the same encrypted sync room and sends the SMS when the caller phone ticks **Also send as a real SMS**.
+The website and APK are public, so no SMS API key can be inside them. A small relay runs on the team laptop instead. It joins the same encrypted sync room and sends the SMS when the caller phone ticks **Also send as a real SMS**.
+
+Fast2SMS is the default (Indian numbers, Quick SMS route, no DLT template needed). Set `SMS_PROVIDER=twilio` to use Twilio instead.
 
 ```bash
-cp .env.example .env              # fill in TWILIO_AUTH_TOKEN, TWILIO_FROM, SMS_TO_u_aarav (never commit .env)
+cp .env.example .env              # fill in FAST2SMS_API_KEY and SMS_TO_u_aarav (never commit .env)
 npm run sms-relay -- --check      # validates config and prints the exact texts, sends nothing
-npm run sms-verify                # asks Twilio if the token, From number and recipients are OK, sends nothing
+npm run sms-verify                # asks the provider if the key works and shows the balance, sends nothing
 npm run sms-relay                 # dry run: logs what it would send (SMS_LIVE=0)
 SMS_LIVE=1 npm run sms-relay      # really sends (or set SMS_LIVE=1 in .env)
 ```
 
-Guard rails protect a trial account's allowance:
+Guard rails, so no wallet balance or trial allowance is wasted:
 - Dry run by default.
 - A daily cap (`SMS_DAILY_CAP`, default 5), a minimum gap between texts, and each message sent at most once.
 - Recipients come only from `.env`.
 - The text is rebuilt by the relay from the fixed script, so nobody in the room can make it send anything else.
-- Each text fits in one SMS segment, including Twilio's trial prefix.
+- On Fast2SMS every text starts with `[PayShield demo]`, so a forwarded copy can't pass as a real notice.
+- Each text fits in one SMS segment.
 
-On a trial account the recipient must be a number verified in Twilio. The caller phone shows the relay as online or offline, and the result of each text.
+The caller phone shows which provider the relay uses, whether it is online, and the result of each text.
 
 ## Security
 

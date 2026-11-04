@@ -9,7 +9,7 @@ import { useToast } from '../ui.jsx';
 // The 12-point security review, with what was done in this prototype and what production adds.
 const CHECKS = [
   ['Secrets only in environment variables, never in the frontend or git', 'done',
-    'The Twilio token lives only in a git-ignored .env on the team laptop, read by the SMS relay. The website and APK contain no keys. CI scans every commit with gitleaks and checks the built bundle for key patterns.'],
+    'The SMS API key (Fast2SMS or Twilio) lives only in a git-ignored .env on the team laptop, read by the SMS relay. The website and APK contain no keys. CI scans every commit with gitleaks and checks the built bundle for key patterns.'],
   ['Admin routes need an admin login', 'done',
     'Every /admin page renders the sign-in until a valid admin session exists: bcrypt-checked password, then a second factor. The session is tab-scoped and expires after 20 minutes idle.'],
   ['Every page checks the user is signed in', 'done',
@@ -31,7 +31,7 @@ const CHECKS = [
   ['Update vulnerable packages, remove unused ones', 'done',
     'npm audit: no known vulnerabilities in anything shipped to users. Upgraded Vite, React Router, sharp and node-tar. Dependabot opens weekly update PRs. Each CI build runs npm audit.'],
   ['Scan git history for leaked secrets', 'done',
-    'The full history was scanned for key patterns (Twilio, AWS, Google, private keys, tokens): nothing found. gitleaks re-scans on every push.']
+    'The full history was scanned for key patterns (Fast2SMS, Twilio, AWS, Google, private keys, tokens): nothing found. gitleaks re-scans on every push.']
 ];
 
 export default function Security() {

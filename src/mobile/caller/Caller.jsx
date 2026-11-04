@@ -93,7 +93,7 @@ export function CallerConsole({ user, signOut }) {
             <small className="muted">The link opens PayShield’s payment screen with the scammer’s UPI ID and amount filled in, the way real scam links open a payment app.</small>
           </div>
           <label className="card toggle-row" style={{ padding: '12px 16px', opacity: relay ? 1 : 0.65 }}>
-            <span className="row"><Smartphone size={18} color="var(--t-high)" /><span>Also send as a real SMS<small>{relay ? `Twilio relay online · ${relay.mode === 'live' ? `live, ${relay.sentToday}/${relay.cap} used today` : 'dry run: logs only, sends nothing'}` : 'Needs the SMS relay running on the team laptop (npm run sms-relay)'}</small></span></span>
+            <span className="row"><Smartphone size={18} color="var(--t-high)" /><span>Also send as a real SMS<small>{relay ? `${relay.provider || 'SMS'} relay online · ${relay.mode === 'live' ? `live, ${relay.sentToday}/${relay.cap} used today` : 'dry run: logs only, sends nothing'}` : 'Needs the SMS relay running on the team laptop (npm run sms-relay)'}</small></span></span>
             <input type="checkbox" className="switch" disabled={!relay} checked={!!relay && real} onChange={(e) => setReal(e.target.checked)} />
           </label>
           <button className="btn danger block" style={{ padding: 16, fontSize: 16 }} disabled={Date.now() - sentAt < 4000}

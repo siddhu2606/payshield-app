@@ -97,7 +97,7 @@ function connect(mqtt, i) {
     if (!buf?.length || buf.length > MAX_BYTES) return;
     const msg = await open(key, new TextDecoder().decode(buf));
     if (!msg) return; // not ours, tampered, or another room
-    if (t === topics.relay) { setStatus({ relay: { online: !!msg.online, mode: msg.mode, sentToday: msg.sentToday, cap: msg.cap, at: msg.at } }); return; }
+    if (t === topics.relay) { setStatus({ relay: { online: !!msg.online, provider: ['Fast2SMS', 'Twilio'].includes(msg.provider) ? msg.provider : 'SMS', mode: msg.mode, sentToday: msg.sentToday, cap: msg.cap, at: msg.at } }); return; }
     gotRetained = true;
     if (!validRemoteDb(msg.db)) return;
     setStatus({ remoteRev: Math.max(status.remoteRev || 0, msg.db.rev || 0), lastSync: Date.now() });

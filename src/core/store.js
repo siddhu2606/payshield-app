@@ -548,7 +548,7 @@ export function pushPaymentRequest(id) {
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newCode = () => Array.from(globalThis.crypto.getRandomValues(new Uint8Array(6)), (b) => CODE_CHARS[b % CODE_CHARS.length]).join('');
 
-/** Send the script's scam SMS to the demo member or child. `real` also asks the laptop relay to send it by Twilio. */
+/** Send the script's scam SMS to the demo member or child. `real` also asks the laptop relay to send it as a real SMS (Fast2SMS or Twilio). */
 export function sendScamSms({ toUserId, scriptId, real }) {
   return commit((d) => {
     d.messages = d.messages || [];
